@@ -17,8 +17,20 @@ const FRONTEND_ORIGIN =
     process.env.FRONTEND_ORIGIN ||
     "https://youngprincejp.github.io";
 
+/* =========================
+   UPLOAD LIMIT
+========================= */
+
+const parsedUploadLimit = Number.parseInt(
+    process.env.MAX_UPLOAD_MB || "25",
+    10
+);
+
 const MAX_UPLOAD_MB =
-    Number(process.env.MAX_UPLOAD_MB || 25);
+    Number.isFinite(parsedUploadLimit) &&
+    parsedUploadLimit > 0
+        ? parsedUploadLimit
+        : 25;
 
 const MAX_UPLOAD_BYTES =
     MAX_UPLOAD_MB * 1024 * 1024;
@@ -181,15 +193,9 @@ const upload = multer({
 app.get("/api/health", (_req, res) => {
     res.json({
         ok: true,
-
-        service:
-            "young-prince-backend",
-
-        kael:
-            Boolean(openai),
-
-        time:
-            new Date().toISOString()
+        service: "young-prince-backend",
+        kael: Boolean(openai),
+        time: new Date().toISOString()
     });
 });
 
@@ -506,6 +512,10 @@ app.listen(
 
         console.log(
             `Kael configured: ${Boolean(openai)}`
+        );
+
+        console.log(
+            `Maximum upload size: ${MAX_UPLOAD_MB} MB`
         );
     }
 );
