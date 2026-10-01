@@ -56,19 +56,19 @@ app.use(
 
 app.use(
     cors({
-        origin(origin, callback) {
-            if (!origin || origin === FRONTEND_ORIGIN) {
-                return callback(null, true);
-            }
+        origin: [
+            "https://youngprincejp.github.io"
+        ],
 
-            return callback(
-                new Error("Origin not allowed by CORS.")
-            );
-        },
+        methods: [
+            "GET",
+            "POST",
+            "OPTIONS"
+        ],
 
-        methods: ["GET", "POST", "OPTIONS"],
-
-        allowedHeaders: ["Content-Type"]
+        allowedHeaders: [
+            "Content-Type"
+        ]
     })
 );
 
