@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: young-prince-backend
+    runtime: node
+    plan: free
+
+    buildCommand: npm install
+
+    startCommand: npm start
+
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+
+      - key: OPENAI_API_KEY
+        sync: false
+
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+
+      - key: FRONTEND_ORIGIN
+        value: https://youngprincejp.github.io
+
+      - key: MAX_UPLOAD_MB
+        value: "25"
