@@ -96,13 +96,17 @@ const kaelLimiter = rateLimit({
 app.use("/api", apiLimiter);
 
 /* =========================
-   GROK / XAI
+   OPENROUTER AI
 ========================= */
 
-const grok = process.env.XAI_API_KEY
+const ai = process.env.OPENROUTER_API_KEY
     ? new OpenAI({
-        apiKey: process.env.XAI_API_KEY,
-        baseURL: "https://api.x.ai/v1"
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+            "HTTP-Referer": "https://youngprincejp.github.io",
+            "X-Title": "Young Prince"
+        }
     })
     : null;
 
@@ -187,13 +191,13 @@ app.get("/api/health", (_req, res) => {
     res.json({
         ok: true,
         service: "young-prince-backend",
-        kael: Boolean(grok),
+        kael: Boolean(ai),
         time: new Date().toISOString()
     });
 });
 
 /* =========================
-   KAEL AI — GROK
+   KAEL AI — OPENROUTER
 ========================= */
 
 app.post(
@@ -221,7 +225,7 @@ app.post(
                 });
             }
 
-            if (!grok) {
+            if (!ai) {
                 return res.status(503).json({
                     message:
                         "Kael is not configured yet."
@@ -229,10 +233,10 @@ app.post(
             }
 
             const completion =
-                await grok.chat.completions.create({
+                await ai.chat.completions.create({
                     model:
-                        process.env.XAI_MODEL ||
-                        "grok-4-1-fast-non-reasoning",
+                        process.env.OPENROUTER_MODEL ||
+                        "openrouter/free",
 
                     messages: [
                         {
@@ -501,7 +505,7 @@ app.listen(
         );
 
         console.log(
-            `Kael configured: ${Boolean(grok)}`
+            `Kael configured: ${Boolean(ai)}`
         );
 
         console.log(
