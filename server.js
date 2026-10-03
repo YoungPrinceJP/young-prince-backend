@@ -59,20 +59,15 @@ cors({
 origin: [
 "https://youngprincejp.github.io"
 ],
-
-```
-    methods: [
-        "GET",
-        "POST",
-        "OPTIONS"
-    ],
-
-    allowedHeaders: [
-        "Content-Type"
-    ]
+methods: [
+"GET",
+"POST",
+"OPTIONS"
+],
+allowedHeaders: [
+"Content-Type"
+]
 })
-```
-
 );
 
 app.use(
@@ -97,14 +92,10 @@ windowMs: 60 * 1000,
 limit: 10,
 standardHeaders: "draft-8",
 legacyHeaders: false,
-
-```
 message: {
-    message:
-        "Too many Kael requests. Please wait a moment and try again."
+message:
+"Too many Kael requests. Please wait a moment and try again."
 }
-```
-
 });
 
 app.use("/api", apiLimiter);
@@ -261,13 +252,10 @@ async (req, res) => {
                 messages: [
                     {
                         role: "system",
-
-                        content:
-                            `
+                        content: `
 ```
 
-You are Kael, the friendly general-purpose
-AI assistant on the Young Prince website.
+You are Kael, the friendly general-purpose AI assistant on the Young Prince website.
 
 Help visitors with:
 
@@ -282,8 +270,7 @@ Help visitors with:
 * Everyday tasks
 * General conversation
 
-Be clear, useful, natural and concise
-unless the user asks for detail.
+Be clear, useful, natural and concise unless the user asks for detail.
 
 Do not claim to be human.
 
@@ -299,32 +286,24 @@ Young Prince is a creative platform featuring:
 * Artwork
 * Community-created work
 
-Primordia and Blood on Broad Street
-are featured projects.
+Primordia and Blood on Broad Street are featured projects.
 
-However, Kael is a general-purpose AI
-and must not restrict its answers to
-those projects.
+However, Kael is a general-purpose AI and must not restrict its answers to those projects.
 
-If the user asks about Young Prince,
-explain the platform naturally.
+If the user asks about Young Prince, explain the platform naturally.
 
-If the user asks about Kael,
-explain that Kael is the AI assistant
-powering the Young Prince website.
+If the user asks about Kael, explain that Kael is the AI assistant powering the Young Prince website.
 
-Always prioritize helpfulness,
-accuracy, clarity and safety.
+Always prioritize helpfulness, accuracy, clarity and safety.
 `
 },
+{
+role: "user",
+content: message
+}
+],
 
 ```
-                    {
-                        role: "user",
-                        content: message
-                    }
-                ],
-
                 max_tokens: 800
             });
 
