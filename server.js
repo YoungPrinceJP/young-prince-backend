@@ -522,6 +522,71 @@ You are the AI companion of Young Prince.
 
 app.get("/api/uploads", (req, res) => {
 
+    /* =========================
+   PUBLIC APPROVED UPLOAD FILE
+========================= */
+
+app.get("/api/uploads/:id/file", (req, res) => {
+
+    try {
+
+        const uploadId = path.basename(req.params.id);
+
+        const metadataPath = path.join(
+            uploadDir,
+            `${uploadId}.json`
+        );
+
+        if (!fs.existsSync(metadataPath)) {
+            return res.status(404).json({
+                message: "Upload not found."
+            });
+        }
+
+        const metadata = JSON.parse(
+            fs.readFileSync(
+                metadataPath,
+                "utf8"
+            )
+        );
+
+        // Only approved uploads can be viewed publicly
+        if (metadata.status !== "approved") {
+            return res.status(403).json({
+                message: "This upload is not publicly available."
+            });
+        }
+
+        const filePath = path.join(
+            uploadDir,
+            metadata.storedName
+        );
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({
+                message: "File not found."
+            });
+        }
+
+        return res.sendFile(
+            path.resolve(filePath)
+        );
+
+    } catch (error) {
+
+        console.error(
+            "PUBLIC UPLOAD FILE ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Could not load upload."
+        });
+
+    }
+
+});
+
     try {
 
         const files =
