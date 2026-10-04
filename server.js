@@ -236,19 +236,6 @@ app.post("/api/admin/login", (req, res) => {
         token
     });
 });
-    }
-
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({
-            message: "Invalid admin password."
-        });
-    }
-
-    return res.json({
-        success: true,
-        message: "Admin login successful."
-    });
-});
 
 /* =========================
    HEALTH CHECK
