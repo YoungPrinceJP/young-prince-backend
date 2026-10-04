@@ -517,6 +517,73 @@ You are the AI companion of Young Prince.
 );
 
 /* =========================
+   PUBLIC APPROVED UPLOADS
+========================= */
+
+app.get("/api/uploads", (req, res) => {
+
+    try {
+
+        const files =
+            fs.readdirSync(uploadDir);
+
+        const uploads =
+            files
+                .filter(
+                    file =>
+                        file.endsWith(".json")
+                )
+                .map(file => {
+
+                    const metadataPath =
+                        path.join(
+                            uploadDir,
+                            file
+                        );
+
+                    try {
+                        return JSON.parse(
+                            fs.readFileSync(
+                                metadataPath,
+                                "utf8"
+                            )
+                        );
+                    } catch {
+                        return null;
+                    }
+
+                })
+                .filter(
+                    upload =>
+                        upload &&
+                        upload.status === "approved"
+                );
+
+        uploads.sort(
+            (a, b) =>
+                new Date(b.reviewedAt || b.uploadedAt) -
+                new Date(a.reviewedAt || a.uploadedAt)
+        );
+
+        return res.json({
+            uploads
+        });
+
+    } catch (error) {
+
+        console.error(
+            "PUBLIC UPLOAD LIST ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message:
+                "Could not load approved uploads."
+        });
+    }
+});
+
+/* =========================
    ADMIN UPLOAD MANAGEMENT
 ========================= */
 
