@@ -11,6 +11,9 @@ import crypto from "node:crypto";
 
 const app = express();
 
+const ADMIN_TOKEN_SECRET =
+    process.env.ADMIN_PASSWORD || "change-this-secret";
+
 const PORT = Number(process.env.PORT || 10000);
 
 const FRONTEND_ORIGIN =
