@@ -62,9 +62,10 @@ app.use(
             "POST",
             "OPTIONS"
         ],
-        allowedHeaders: [
-            "Content-Type"
-        ]
+       allowedHeaders: [
+    "Content-Type",
+    "Authorization"
+]
     })
 );
 
