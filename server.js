@@ -184,6 +184,34 @@ const upload = multer({
 });
 
 /* =========================
+   ADMIN AUTHENTICATION
+========================= */
+
+app.post("/api/admin/login", (req, res) => {
+    const password =
+        typeof req.body?.password === "string"
+            ? req.body.password
+            : "";
+
+    if (!process.env.ADMIN_PASSWORD) {
+        return res.status(503).json({
+            message: "Admin authentication is not configured."
+        });
+    }
+
+    if (password !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({
+            message: "Invalid admin password."
+        });
+    }
+
+    return res.json({
+        success: true,
+        message: "Admin login successful."
+    });
+});
+
+/* =========================
    HEALTH CHECK
 ========================= */
 
