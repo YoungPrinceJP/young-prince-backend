@@ -208,6 +208,42 @@ app.post("/api/admin/login", (req, res) => {
         });
     }
 
+    const tokenData = {
+        role: "admin",
+        createdAt: Date.now()
+    };
+
+    const payload =
+        Buffer.from(
+            JSON.stringify(tokenData)
+        ).toString("base64url");
+
+    const signature =
+        crypto
+            .createHmac(
+                "sha256",
+                ADMIN_TOKEN_SECRET
+            )
+            .update(payload)
+            .digest("base64url");
+
+    const token =
+        `${payload}.${signature}`;
+
+    return res.json({
+        success: true,
+        message: "Admin login successful.",
+        token
+    });
+});
+    }
+
+    if (password !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({
+            message: "Invalid admin password."
+        });
+    }
+
     return res.json({
         success: true,
         message: "Admin login successful."
