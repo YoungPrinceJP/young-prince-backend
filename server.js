@@ -515,6 +515,347 @@ You are the AI companion of Young Prince.
 );
 
 /* =========================
+   ADMIN UPLOAD MANAGEMENT
+========================= */
+
+function verifyAdminToken(req) {
+    const authorization =
+        req.headers.authorization || "";
+
+    if (!authorization.startsWith("Bearer ")) {
+        return false;
+    }
+
+    const token =
+        authorization.slice(7);
+
+    const parts =
+        token.split(".");
+
+    if (parts.length !== 2) {
+        return false;
+    }
+
+    const [payload, signature] =
+        parts;
+
+    const expectedSignature =
+        crypto
+            .createHmac(
+                "sha256",
+                ADMIN_TOKEN_SECRET
+            )
+            .update(payload)
+            .digest("base64url");
+
+    if (signature !== expectedSignature) {
+        return false;
+    }
+
+    try {
+        const data =
+            JSON.parse(
+                Buffer.from(
+                    payload,
+                    "base64url"
+                ).toString("utf8")
+            );
+
+        if (data.role !== "admin") {
+            return false;
+        }
+
+        return true;
+
+    } catch {
+        return false;
+    }
+}
+
+/* GET ALL UPLOADS */
+
+app.get("/api/admin/uploads", (req, res) => {
+
+    if (!verifyAdminToken(req)) {
+        return res.status(401).json({
+            message: "Unauthorized."
+        });
+    }
+
+    try {
+
+        const files =
+            fs.readdirSync(uploadDir);
+
+        const uploads =
+            files
+                .filter(
+                    file =>
+                        file.endsWith(".json")
+                )
+                .map(file => {
+
+                    const metadataPath =
+                        path.join(
+                            uploadDir,
+                            file
+                        );
+
+                    return JSON.parse(
+                        fs.readFileSync(
+                            metadataPath,
+                            "utf8"
+                        )
+                    );
+
+                });
+
+        uploads.sort(
+            (a, b) =>
+                new Date(b.uploadedAt) -
+                new Date(a.uploadedAt)
+        );
+
+        return res.json({
+            uploads
+        });
+
+    } catch (error) {
+
+        console.error(
+            "ADMIN UPLOAD LIST ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message:
+                "Could not load uploads."
+        });
+    }
+});
+
+/* APPROVE UPLOAD */
+
+app.post(
+    "/api/admin/uploads/:id/approve",
+    (req, res) => {
+
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+
+        const id =
+            String(req.params.id);
+
+        const metadataPath =
+            path.join(
+                uploadDir,
+                `${id}.json`
+            );
+
+        if (!fs.existsSync(metadataPath)) {
+            return res.status(404).json({
+                message:
+                    "Upload not found."
+            });
+        }
+
+        try {
+
+            const metadata =
+                JSON.parse(
+                    fs.readFileSync(
+                        metadataPath,
+                        "utf8"
+                    )
+                );
+
+            metadata.status =
+                "approved";
+
+            metadata.reviewedAt =
+                new Date().toISOString();
+
+            fs.writeFileSync(
+                metadataPath,
+                JSON.stringify(
+                    metadata,
+                    null,
+                    2
+                ),
+                "utf8"
+            );
+
+            return res.json({
+                success: true,
+                message:
+                    "Upload approved."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "APPROVE ERROR:",
+                error
+            );
+
+            return res.status(500).json({
+                message:
+                    "Could not approve upload."
+            });
+        }
+    }
+);
+
+/* REJECT UPLOAD */
+
+app.post(
+    "/api/admin/uploads/:id/reject",
+    (req, res) => {
+
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+
+        const id =
+            String(req.params.id);
+
+        const metadataPath =
+            path.join(
+                uploadDir,
+                `${id}.json`
+            );
+
+        if (!fs.existsSync(metadataPath)) {
+            return res.status(404).json({
+                message:
+                    "Upload not found."
+            });
+        }
+
+        try {
+
+            const metadata =
+                JSON.parse(
+                    fs.readFileSync(
+                        metadataPath,
+                        "utf8"
+                    )
+                );
+
+            metadata.status =
+                "rejected";
+
+            metadata.reviewedAt =
+                new Date().toISOString();
+
+            fs.writeFileSync(
+                metadataPath,
+                JSON.stringify(
+                    metadata,
+                    null,
+                    2
+                ),
+                "utf8"
+            );
+
+            return res.json({
+                success: true,
+                message:
+                    "Upload rejected."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "REJECT ERROR:",
+                error
+            );
+
+            return res.status(500).json({
+                message:
+                    "Could not reject upload."
+            });
+        }
+    }
+);
+
+/* DELETE UPLOAD */
+
+app.delete(
+    "/api/admin/uploads/:id",
+    (req, res) => {
+
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+
+        const id =
+            String(req.params.id);
+
+        const metadataPath =
+            path.join(
+                uploadDir,
+                `${id}.json`
+            );
+
+        if (!fs.existsSync(metadataPath)) {
+            return res.status(404).json({
+                message:
+                    "Upload not found."
+            });
+        }
+
+        try {
+
+            const metadata =
+                JSON.parse(
+                    fs.readFileSync(
+                        metadataPath,
+                        "utf8"
+                    )
+                );
+
+            const filePath =
+                path.join(
+                    uploadDir,
+                    metadata.storedName
+                );
+
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+
+            fs.unlinkSync(metadataPath);
+
+            return res.json({
+                success: true,
+                message:
+                    "Upload deleted."
+            });
+
+        } catch (error) {
+
+            console.error(
+                "DELETE UPLOAD ERROR:",
+                error
+            );
+
+            return res.status(500).json({
+                message:
+                    "Could not delete upload."
+            });
+        }
+    }
+);
+
+/* =========================
    UPLOAD
 ========================= */
 
