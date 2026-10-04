@@ -57,11 +57,12 @@ app.use(
         origin: [
             "https://youngprincejp.github.io"
         ],
-        methods: [
-            "GET",
-            "POST",
-            "OPTIONS"
-        ],
+       methods: [
+    "GET",
+    "POST",
+    "DELETE",
+    "OPTIONS"
+],
        allowedHeaders: [
     "Content-Type",
     "Authorization"
