@@ -832,7 +832,7 @@ function verifyAdminToken(req) {
 
 /* GET ALL UPLOADS */
 
-app.get("/api/admin/uploads", (req, res) => {
+app.get("/api/admin/uploads", async (req, res) => {
 
     if (!verifyAdminToken(req)) {
         return res.status(401).json({
@@ -842,36 +842,77 @@ app.get("/api/admin/uploads", (req, res) => {
 
     try {
 
-        const files =
-            fs.readdirSync(uploadDir);
+        const { data, error } =
+            await supabaseAdmin.storage
+                .from(COMMUNITY_BUCKET)
+                .list("metadata", {
+                    limit: 100,
+                    sortBy: {
+                        column: "name",
+                        order: "desc"
+                    }
+                });
 
-        const uploads =
-            files
-                .filter(
-                    file =>
-                        file.endsWith(".json")
-                )
-                .map(file => {
+        if (error) {
+            throw error;
+        }
 
-                    const metadataPath =
-                        path.join(
-                            uploadDir,
-                            file
+        const uploads = [];
+
+        for (const file of data || []) {
+
+            if (!file.name.endsWith(".json")) {
+                continue;
+            }
+
+            try {
+
+                const {
+                    data: metadataFile,
+                    error: metadataError
+                } =
+                    await supabaseAdmin.storage
+                        .from(COMMUNITY_BUCKET)
+                        .download(
+                            `metadata/${file.name}`
                         );
 
-                    return JSON.parse(
-                        fs.readFileSync(
-                            metadataPath,
-                            "utf8"
-                        )
+                if (metadataError) {
+                    console.error(
+                        "ADMIN METADATA DOWNLOAD ERROR:",
+                        metadataError
                     );
+                    continue;
+                }
 
-                });
+                const metadataText =
+                    await metadataFile.text();
+
+                const metadata =
+                    JSON.parse(metadataText);
+
+                if (metadata) {
+                    uploads.push(metadata);
+                }
+
+            } catch (metadataParseError) {
+
+                console.error(
+                    "ADMIN METADATA PARSE ERROR:",
+                    metadataParseError
+                );
+
+            }
+        }
 
         uploads.sort(
             (a, b) =>
-                new Date(b.uploadedAt) -
-                new Date(a.uploadedAt)
+                new Date(
+                    b.uploadedAt
+                ) -
+                new Date(
+                    a.uploadedAt
+                )
         );
 
         return res.json({
