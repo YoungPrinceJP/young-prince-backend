@@ -15,6 +15,54 @@ const supabaseAdmin = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const COMMUNITY_BUCKET = "community-uploads";
+
+async function uploadToCommunityStorage(
+    filePath,
+    storagePath,
+    contentType
+) {
+    const fileBuffer =
+        await fs.promises.readFile(filePath);
+
+    const { error } =
+        await supabaseAdmin.storage
+            .from(COMMUNITY_BUCKET)
+            .upload(
+                storagePath,
+                fileBuffer,
+                {
+                    contentType,
+                    upsert: true
+                }
+            );
+
+    if (error) {
+        throw error;
+    }
+}
+
+async function uploadJsonToCommunityStorage(
+    storagePath,
+    data
+) {
+    const { error } =
+        await supabaseAdmin.storage
+            .from(COMMUNITY_BUCKET)
+            .upload(
+                storagePath,
+                JSON.stringify(data, null, 2),
+                {
+                    contentType: "application/json",
+                    upsert: true
+                }
+            );
+
+    if (error) {
+        throw error;
+    }
+}
+
 const app = express();
 
 const ADMIN_TOKEN_SECRET =
