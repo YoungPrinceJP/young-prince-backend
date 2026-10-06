@@ -1098,6 +1098,9 @@ app.post(
                 storedName:
                     req.file.filename,
 
+                storagePath:
+                    `files/${req.file.filename}`,
+
                 mimeType:
                     req.file.mimetype,
 
@@ -1111,21 +1114,28 @@ app.post(
                     "pending"
             };
 
-            const metadataPath =
-                path.join(
-                    uploadDir,
-                    `${metadata.id}.json`
-                );
+            /* Upload actual file to Supabase Storage */
 
-            fs.writeFileSync(
-                metadataPath,
-                JSON.stringify(
-                    metadata,
-                    null,
-                    2
-                ),
-                "utf8"
+            await uploadToCommunityStorage(
+                req.file.path,
+                metadata.storagePath,
+                metadata.mimeType
             );
+
+            /* Upload metadata to Supabase Storage */
+
+            await uploadJsonToCommunityStorage(
+                `metadata/${metadata.id}.json`,
+                metadata
+            );
+
+            /* Remove temporary Render file */
+
+            try {
+                await fs.promises.unlink(
+                    req.file.path
+                );
+            } catch {}
 
             return res.status(201).json({
 
@@ -1145,7 +1155,7 @@ app.post(
 
             if (req.file?.path) {
                 try {
-                    fs.unlinkSync(
+                    await fs.promises.unlink(
                         req.file.path
                     );
                 } catch {}
