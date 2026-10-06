@@ -580,108 +580,83 @@ app.get("/api/uploads", (req, res) => {
    PUBLIC APPROVED UPLOAD FILE
 ========================= */
 
-app.get("/api/uploads/:id/file", (req, res) => {
+app.get("/api/uploads", async (req, res) => {
 
     try {
 
-        const uploadId = path.basename(req.params.id);
-
-        const metadataPath = path.join(
-            uploadDir,
-            `${uploadId}.json`
-        );
-
-        if (!fs.existsSync(metadataPath)) {
-            return res.status(404).json({
-                message: "Upload not found."
-            });
-        }
-
-        const metadata = JSON.parse(
-            fs.readFileSync(
-                metadataPath,
-                "utf8"
-            )
-        );
-
-        // Only approved uploads can be viewed publicly
-        if (metadata.status !== "approved") {
-            return res.status(403).json({
-                message: "This upload is not publicly available."
-            });
-        }
-
-        const filePath = path.join(
-            uploadDir,
-            metadata.storedName
-        );
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({
-                message: "File not found."
-            });
-        }
-
-        return res.sendFile(
-            path.resolve(filePath)
-        );
-
-    } catch (error) {
-
-        console.error(
-            "PUBLIC UPLOAD FILE ERROR:",
-            error
-        );
-
-        return res.status(500).json({
-            message: "Could not load upload."
-        });
-
-    }
-
-});
-
-    try {
-
-        const files =
-            fs.readdirSync(uploadDir);
-
-        const uploads =
-            files
-                .filter(
-                    file =>
-                        file.endsWith(".json")
-                )
-                .map(file => {
-
-                    const metadataPath =
-                        path.join(
-                            uploadDir,
-                            file
-                        );
-
-                    try {
-                        return JSON.parse(
-                            fs.readFileSync(
-                                metadataPath,
-                                "utf8"
-                            )
-                        );
-                    } catch {
-                        return null;
+        const { data, error } =
+            await supabaseAdmin.storage
+                .from(COMMUNITY_BUCKET)
+                .list("metadata", {
+                    limit: 100,
+                    sortBy: {
+                        column: "name",
+                        order: "desc"
                     }
+                });
 
-                })
-                .filter(
-                    upload =>
-                        upload &&
-                        upload.status === "approved"
+        if (error) {
+            throw error;
+        }
+
+        const uploads = [];
+
+        for (const file of data || []) {
+
+            if (!file.name.endsWith(".json")) {
+                continue;
+            }
+
+            const { data: metadataFile, error: downloadError } =
+                await supabaseAdmin.storage
+                    .from(COMMUNITY_BUCKET)
+                    .download(
+                        `metadata/${file.name}`
+                    );
+
+            if (downloadError) {
+                console.error(
+                    "METADATA DOWNLOAD ERROR:",
+                    downloadError
                 );
+                continue;
+            }
+
+            const metadataText =
+                await metadataFile.text();
+
+            try {
+
+                const metadata =
+                    JSON.parse(metadataText);
+
+                if (
+                    metadata &&
+                    metadata.status === "approved"
+                ) {
+                    uploads.push(metadata);
+                }
+
+            } catch (parseError) {
+
+                console.error(
+                    "METADATA PARSE ERROR:",
+                    parseError
+                );
+
+            }
+        }
 
         uploads.sort(
             (a, b) =>
-                new Date(b.reviewedAt || b.uploadedAt) -
-                new Date(a.reviewedAt || a.uploadedAt)
+                new Date(
+                    b.reviewedAt ||
+                    b.uploadedAt
+                ) -
+                new Date(
+                    a.reviewedAt ||
+                    a.uploadedAt
+                )
         );
 
         return res.json({
