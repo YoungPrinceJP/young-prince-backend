@@ -570,11 +570,6 @@ You are the AI companion of Young Prince.
     }
 );
 
-/* =========================
-   PUBLIC APPROVED UPLOADS
-========================= */
-
-app.get("/api/uploads", (req, res) => {
 
     /* =========================
    PUBLIC APPROVED UPLOAD FILE
