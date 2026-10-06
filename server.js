@@ -673,6 +673,106 @@ app.get("/api/uploads", async (req, res) => {
 });
 
 /* =========================
+   PUBLIC APPROVED UPLOAD FILE
+========================= */
+
+app.get("/api/uploads/:id/file", async (req, res) => {
+
+    try {
+
+        const uploadId =
+            path.basename(
+                String(req.params.id)
+            );
+
+        const {
+            data: metadataFile,
+            error: metadataError
+        } =
+            await supabaseAdmin.storage
+                .from(COMMUNITY_BUCKET)
+                .download(
+                    `metadata/${uploadId}.json`
+                );
+
+        if (metadataError) {
+            return res.status(404).json({
+                message:
+                    "Upload not found."
+            });
+        }
+
+        const metadataText =
+            await metadataFile.text();
+
+        const metadata =
+            JSON.parse(metadataText);
+
+        if (
+            !metadata ||
+            metadata.status !== "approved"
+        ) {
+            return res.status(403).json({
+                message:
+                    "This upload is not publicly available."
+            });
+        }
+
+        const {
+            data: fileData,
+            error: fileError
+        } =
+            await supabaseAdmin.storage
+                .from(COMMUNITY_BUCKET)
+                .download(
+                    metadata.storagePath
+                );
+
+        if (fileError) {
+            console.error(
+                "STORAGE FILE DOWNLOAD ERROR:",
+                fileError
+            );
+
+            return res.status(404).json({
+                message:
+                    "File not found."
+            });
+        }
+
+        res.setHeader(
+            "Content-Type",
+            metadata.mimeType ||
+            "application/octet-stream"
+        );
+
+        res.setHeader(
+            "Content-Disposition",
+            `inline; filename="${metadata.originalName || metadata.storedName}"`
+        );
+
+        const buffer =
+            Buffer.from(
+                await fileData.arrayBuffer()
+            );
+
+        return res.send(buffer);
+
+    } catch (error) {
+
+        console.error(
+            "PUBLIC UPLOAD FILE ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message:
+                "Could not load upload."
+        });
+    }
+});
+
+/* =========================
    ADMIN UPLOAD MANAGEMENT
 ========================= */
 
