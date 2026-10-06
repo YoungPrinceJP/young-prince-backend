@@ -10,12 +10,21 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
+/* =========================
+   SUPABASE
+========================= */
+
 const supabaseAdmin = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const COMMUNITY_BUCKET = "community-uploads";
+const COMMUNITY_BUCKET =
+    "community-uploads";
+
+/* =========================
+   SUPABASE STORAGE HELPERS
+========================= */
 
 async function uploadToCommunityStorage(
     filePath,
@@ -51,9 +60,14 @@ async function uploadJsonToCommunityStorage(
             .from(COMMUNITY_BUCKET)
             .upload(
                 storagePath,
-                JSON.stringify(data, null, 2),
+                JSON.stringify(
+                    data,
+                    null,
+                    2
+                ),
                 {
-                    contentType: "application/json",
+                    contentType:
+                        "application/json",
                     upsert: true
                 }
             );
@@ -63,36 +77,97 @@ async function uploadJsonToCommunityStorage(
     }
 }
 
+async function getUploadMetadata(id) {
+
+    const uploadId =
+        path.basename(
+            String(id)
+        );
+
+    const {
+        data: metadataFile,
+        error: metadataError
+    } =
+        await supabaseAdmin.storage
+            .from(COMMUNITY_BUCKET)
+            .download(
+                `metadata/${uploadId}.json`
+            );
+
+    if (metadataError) {
+        return null;
+    }
+
+    const metadataText =
+        await metadataFile.text();
+
+    try {
+        return JSON.parse(
+            metadataText
+        );
+    } catch {
+        return null;
+    }
+}
+
+/* =========================
+   APP
+========================= */
+
 const app = express();
 
 const ADMIN_TOKEN_SECRET =
-    process.env.ADMIN_PASSWORD || "change-this-secret";
+    process.env.ADMIN_PASSWORD ||
+    "change-this-secret";
 
-const PORT = Number(process.env.PORT || 10000);
+const PORT =
+    Number(
+        process.env.PORT ||
+        10000
+    );
 
 const FRONTEND_ORIGIN =
     process.env.FRONTEND_ORIGIN ||
     "https://youngprincejp.github.io";
 
-const parsedUploadLimit = Number.parseInt(
-    process.env.MAX_UPLOAD_MB || "25",
-    10
-);
+const parsedUploadLimit =
+    Number.parseInt(
+        process.env.MAX_UPLOAD_MB ||
+        "25",
+        10
+    );
 
 const MAX_UPLOAD_MB =
-    Number.isFinite(parsedUploadLimit) && parsedUploadLimit > 0
+    Number.isFinite(
+        parsedUploadLimit
+    ) &&
+    parsedUploadLimit > 0
         ? parsedUploadLimit
         : 25;
 
 const MAX_UPLOAD_BYTES =
-    MAX_UPLOAD_MB * 1024 * 1024;
+    MAX_UPLOAD_MB *
+    1024 *
+    1024;
 
 const uploadDir =
-    path.join(process.cwd(), "storage", "uploads");
+    path.join(
+        process.cwd(),
+        "storage",
+        "uploads"
+    );
 
-fs.mkdirSync(uploadDir, { recursive: true });
+fs.mkdirSync(
+    uploadDir,
+    {
+        recursive: true
+    }
+);
 
-app.set("trust proxy", 1);
+app.set(
+    "trust proxy",
+    1
+);
 
 /* =========================
    SECURITY
@@ -109,18 +184,20 @@ app.use(
 app.use(
     cors({
         origin: [
-            "https://youngprincejp.github.io"
+            FRONTEND_ORIGIN
         ],
-       methods: [
-    "GET",
-    "POST",
-    "DELETE",
-    "OPTIONS"
-],
-       allowedHeaders: [
-    "Content-Type",
-    "Authorization"
-]
+
+        methods: [
+            "GET",
+            "POST",
+            "DELETE",
+            "OPTIONS"
+        ],
+
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization"
+        ]
     })
 );
 
@@ -134,177 +211,259 @@ app.use(
    RATE LIMITING
 ========================= */
 
-const apiLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 30,
-    standardHeaders: "draft-8",
-    legacyHeaders: false
-});
+const apiLimiter =
+    rateLimit({
+        windowMs:
+            60 * 1000,
 
-const kaelLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 10,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-    message: {
-        message:
-            "Too many Kael requests. Please wait a moment and try again."
-    }
-});
+        limit: 30,
 
-app.use("/api", apiLimiter);
+        standardHeaders:
+            "draft-8",
+
+        legacyHeaders:
+            false
+    });
+
+const kaelLimiter =
+    rateLimit({
+        windowMs:
+            60 * 1000,
+
+        limit: 10,
+
+        standardHeaders:
+            "draft-8",
+
+        legacyHeaders:
+            false,
+
+        message: {
+            message:
+                "Too many Kael requests. Please wait a moment and try again."
+        }
+    });
+
+app.use(
+    "/api",
+    apiLimiter
+);
 
 /* =========================
    OPENROUTER AI
 ========================= */
 
-const ai = process.env.OPENROUTER_API_KEY
-    ? new OpenAI({
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: "https://openrouter.ai/api/v1",
-        defaultHeaders: {
-            "HTTP-Referer": "https://youngprincejp.github.io",
-            "X-Title": "Young Prince"
-        }
-    })
-    : null;
+const ai =
+    process.env.OPENROUTER_API_KEY
+        ? new OpenAI({
+            apiKey:
+                process.env.OPENROUTER_API_KEY,
+
+            baseURL:
+                "https://openrouter.ai/api/v1",
+
+            defaultHeaders: {
+                "HTTP-Referer":
+                    "https://youngprincejp.github.io",
+
+                "X-Title":
+                    "Young Prince"
+            }
+        })
+        : null;
 
 /* =========================
    FILE TYPES
 ========================= */
 
-const allowedMimeTypes = new Set([
-    "image/jpeg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "image/svg+xml",
+const allowedMimeTypes =
+    new Set([
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/svg+xml",
 
-    "video/mp4",
-    "video/webm",
-    "video/quicktime",
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
 
-    "audio/mpeg",
-    "audio/mp4",
-    "audio/wav",
-    "audio/ogg",
-    "audio/webm",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/wav",
+        "audio/ogg",
+        "audio/webm",
 
-    "application/pdf",
-    "application/msword",
+        "application/pdf",
+        "application/msword",
 
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 
-    "text/plain"
-]);
+        "text/plain"
+    ]);
 
 /* =========================
-   MULTER STORAGE
+   TEMPORARY MULTER STORAGE
 ========================= */
 
-const storage = multer.diskStorage({
-    destination: (_req, _file, callback) => {
-        callback(null, uploadDir);
-    },
+const storage =
+    multer.diskStorage({
 
-    filename: (_req, file, callback) => {
-        const extension =
-            path.extname(file.originalname)
-                .toLowerCase()
-                .slice(0, 10);
+        destination:
+            (_req, _file, callback) => {
 
-        const filename =
-            `${Date.now()}-${crypto
-                .randomBytes(8)
-                .toString("hex")}${extension}`;
+                callback(
+                    null,
+                    uploadDir
+                );
+            },
 
-        callback(null, filename);
-    }
-});
+        filename:
+            (_req, file, callback) => {
 
-const upload = multer({
-    storage,
+                const extension =
+                    path.extname(
+                        file.originalname
+                    )
+                    .toLowerCase()
+                    .slice(0, 10);
 
-    limits: {
-        fileSize: MAX_UPLOAD_BYTES
-    },
+                const filename =
+                    `${Date.now()}-${crypto
+                        .randomBytes(8)
+                        .toString("hex")}${extension}`;
 
-    fileFilter: (_req, file, callback) => {
-        if (!allowedMimeTypes.has(file.mimetype)) {
-            return callback(
-                new Error(
-                    "This file type is not supported."
-                )
-            );
-        }
+                callback(
+                    null,
+                    filename
+                );
+            }
+    });
 
-        callback(null, true);
-    }
-});
+const upload =
+    multer({
+
+        storage,
+
+        limits: {
+            fileSize:
+                MAX_UPLOAD_BYTES
+        },
+
+        fileFilter:
+            (_req, file, callback) => {
+
+                if (
+                    !allowedMimeTypes.has(
+                        file.mimetype
+                    )
+                ) {
+
+                    return callback(
+                        new Error(
+                            "This file type is not supported."
+                        )
+                    );
+                }
+
+                callback(
+                    null,
+                    true
+                );
+            }
+    });
 
 /* =========================
    ADMIN AUTHENTICATION
 ========================= */
 
-app.post("/api/admin/login", (req, res) => {
-    const password =
-        typeof req.body?.password === "string"
-            ? req.body.password
-            : "";
+app.post(
+    "/api/admin/login",
+    (req, res) => {
 
-    if (!process.env.ADMIN_PASSWORD) {
-        return res.status(503).json({
-            message: "Admin authentication is not configured."
+        const password =
+            typeof req.body?.password ===
+            "string"
+                ? req.body.password
+                : "";
+
+        if (
+            !process.env.ADMIN_PASSWORD
+        ) {
+
+            return res.status(503).json({
+                message:
+                    "Admin authentication is not configured."
+            });
+        }
+
+        if (
+            password !==
+            process.env.ADMIN_PASSWORD
+        ) {
+
+            return res.status(401).json({
+                message:
+                    "Invalid admin password."
+            });
+        }
+
+        const tokenData = {
+            role: "admin",
+            createdAt: Date.now()
+        };
+
+        const payload =
+            Buffer.from(
+                JSON.stringify(
+                    tokenData
+                )
+            ).toString(
+                "base64url"
+            );
+
+        const signature =
+            crypto
+                .createHmac(
+                    "sha256",
+                    ADMIN_TOKEN_SECRET
+                )
+                .update(payload)
+                .digest(
+                    "base64url"
+                );
+
+        const token =
+            `${payload}.${signature}`;
+
+        return res.json({
+            success: true,
+            message:
+                "Admin login successful.",
+            token
         });
     }
-
-    if (password !== process.env.ADMIN_PASSWORD) {
-        return res.status(401).json({
-            message: "Invalid admin password."
-        });
-    }
-
-    const tokenData = {
-        role: "admin",
-        createdAt: Date.now()
-    };
-
-    const payload =
-        Buffer.from(
-            JSON.stringify(tokenData)
-        ).toString("base64url");
-
-    const signature =
-        crypto
-            .createHmac(
-                "sha256",
-                ADMIN_TOKEN_SECRET
-            )
-            .update(payload)
-            .digest("base64url");
-
-    const token =
-        `${payload}.${signature}`;
-
-    return res.json({
-        success: true,
-        message: "Admin login successful.",
-        token
-    });
-});
+);
 
 /* =========================
    HEALTH CHECK
 ========================= */
 
-app.get("/api/health", (_req, res) => {
-    res.json({
-        ok: true,
-        service: "young-prince-backend",
-        kael: Boolean(ai),
-        time: new Date().toISOString()
-    });
-});
+app.get(
+    "/api/health",
+    (_req, res) => {
+
+        res.json({
+            ok: true,
+            service:
+                "young-prince-backend",
+            kael:
+                Boolean(ai),
+            time:
+                new Date().toISOString()
+        });
+    }
+);
 
 /* =========================
    KAEL AI — OPENROUTER
@@ -315,20 +474,27 @@ app.post(
     kaelLimiter,
 
     async (req, res) => {
+
         try {
+
             const message =
-                typeof req.body?.message === "string"
+                typeof req.body?.message ===
+                "string"
                     ? req.body.message.trim()
                     : "";
 
             if (!message) {
+
                 return res.status(400).json({
                     message:
                         "Please enter a message."
                 });
             }
 
-            if (message.length > 4000) {
+            if (
+                message.length > 4000
+            ) {
+
                 return res.status(400).json({
                     message:
                         "Your message is too long. Please keep it under 4,000 characters."
@@ -336,6 +502,7 @@ app.post(
             }
 
             if (!ai) {
+
                 return res.status(503).json({
                     message:
                         "Kael is not configured yet."
@@ -344,13 +511,17 @@ app.post(
 
             const completion =
                 await ai.chat.completions.create({
+
                     model:
                         process.env.OPENROUTER_MODEL ||
                         "openrouter/free",
 
                     messages: [
+
                         {
-                            role: "system",
+                            role:
+                                "system",
+
                             content: `
 You are Kael, the official AI assistant of the Young Prince creative platform.
 
@@ -538,17 +709,26 @@ You are Kael.
 You are the AI companion of Young Prince.
 `
                         },
+
                         {
-                            role: "user",
-                            content: message
+                            role:
+                                "user",
+
+                            content:
+                                message
                         }
                     ],
 
-                    max_tokens: 800
+                    max_tokens:
+                        800
                 });
 
             const reply =
-                completion.choices?.[0]?.message?.content?.trim() ||
+                completion
+                    .choices?.[0]
+                    ?.message
+                    ?.content
+                    ?.trim() ||
                 "I couldn't generate a response right now.";
 
             return res.json({
@@ -570,217 +750,270 @@ You are the AI companion of Young Prince.
     }
 );
 
-
-    /* =========================
-   PUBLIC APPROVED UPLOAD FILE
+/* =========================
+   PUBLIC APPROVED UPLOADS
 ========================= */
 
-app.get("/api/uploads", async (req, res) => {
+app.get(
+    "/api/uploads",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const { data, error } =
-            await supabaseAdmin.storage
-                .from(COMMUNITY_BUCKET)
-                .list("metadata", {
-                    limit: 100,
-                    sortBy: {
-                        column: "name",
-                        order: "desc"
-                    }
-                });
-
-        if (error) {
-            throw error;
-        }
-
-        const uploads = [];
-
-        for (const file of data || []) {
-
-            if (!file.name.endsWith(".json")) {
-                continue;
-            }
-
-            const { data: metadataFile, error: downloadError } =
+            const {
+                data,
+                error
+            } =
                 await supabaseAdmin.storage
-                    .from(COMMUNITY_BUCKET)
-                    .download(
-                        `metadata/${file.name}`
+                    .from(
+                        COMMUNITY_BUCKET
+                    )
+                    .list(
+                        "metadata",
+                        {
+                            limit: 100,
+
+                            sortBy: {
+                                column:
+                                    "name",
+                                order:
+                                    "desc"
+                            }
+                        }
                     );
 
-            if (downloadError) {
-                console.error(
-                    "METADATA DOWNLOAD ERROR:",
-                    downloadError
-                );
-                continue;
+            if (error) {
+                throw error;
             }
 
-            const metadataText =
-                await metadataFile.text();
+            const uploads = [];
 
-            try {
-
-                const metadata =
-                    JSON.parse(metadataText);
+            for (
+                const file of
+                data || []
+            ) {
 
                 if (
-                    metadata &&
-                    metadata.status === "approved"
+                    !file.name.endsWith(
+                        ".json"
+                    )
                 ) {
-                    uploads.push(metadata);
+                    continue;
                 }
 
-            } catch (parseError) {
+                try {
 
-                console.error(
-                    "METADATA PARSE ERROR:",
+                    const {
+                        data:
+                            metadataFile,
+                        error:
+                            downloadError
+                    } =
+                        await supabaseAdmin
+                            .storage
+                            .from(
+                                COMMUNITY_BUCKET
+                            )
+                            .download(
+                                `metadata/${file.name}`
+                            );
+
+                    if (
+                        downloadError
+                    ) {
+
+                        console.error(
+                            "METADATA DOWNLOAD ERROR:",
+                            downloadError
+                        );
+
+                        continue;
+                    }
+
+                    const metadataText =
+                        await metadataFile.text();
+
+                    const metadata =
+                        JSON.parse(
+                            metadataText
+                        );
+
+                    if (
+                        metadata &&
+                        metadata.status ===
+                            "approved"
+                    ) {
+
+                        uploads.push(
+                            metadata
+                        );
+                    }
+
+                } catch (
                     parseError
-                );
+                ) {
 
+                    console.error(
+                        "METADATA PARSE ERROR:",
+                        parseError
+                    );
+                }
             }
+
+            uploads.sort(
+                (a, b) =>
+                    new Date(
+                        b.reviewedAt ||
+                        b.uploadedAt
+                    ) -
+                    new Date(
+                        a.reviewedAt ||
+                        a.uploadedAt
+                    )
+            );
+
+            return res.json({
+                uploads
+            });
+
+        } catch (error) {
+
+            console.error(
+                "PUBLIC UPLOAD LIST ERROR:",
+                error
+            );
+
+            return res.status(500).json({
+                message:
+                    "Could not load approved uploads."
+            });
         }
-
-        uploads.sort(
-            (a, b) =>
-                new Date(
-                    b.reviewedAt ||
-                    b.uploadedAt
-                ) -
-                new Date(
-                    a.reviewedAt ||
-                    a.uploadedAt
-                )
-        );
-
-        return res.json({
-            uploads
-        });
-
-    } catch (error) {
-
-        console.error(
-            "PUBLIC UPLOAD LIST ERROR:",
-            error
-        );
-
-        return res.status(500).json({
-            message:
-                "Could not load approved uploads."
-        });
     }
-});
+);
 
 /* =========================
    PUBLIC APPROVED UPLOAD FILE
 ========================= */
 
-app.get("/api/uploads/:id/file", async (req, res) => {
+app.get(
+    "/api/uploads/:id/file",
+    async (req, res) => {
 
-    try {
+        try {
 
-        const uploadId =
-            path.basename(
-                String(req.params.id)
+            const uploadId =
+                path.basename(
+                    String(
+                        req.params.id
+                    )
+                );
+
+            const metadata =
+                await getUploadMetadata(
+                    uploadId
+                );
+
+            if (!metadata) {
+
+                return res.status(404).json({
+                    message:
+                        "Upload not found."
+                });
+            }
+
+            if (
+                metadata.status !==
+                "approved"
+            ) {
+
+                return res.status(403).json({
+                    message:
+                        "This upload is not publicly available."
+                });
+            }
+
+            const {
+                data: fileData,
+                error: fileError
+            } =
+                await supabaseAdmin.storage
+                    .from(
+                        COMMUNITY_BUCKET
+                    )
+                    .download(
+                        metadata.storagePath
+                    );
+
+            if (fileError) {
+
+                console.error(
+                    "STORAGE FILE DOWNLOAD ERROR:",
+                    fileError
+                );
+
+                return res.status(404).json({
+                    message:
+                        "File not found."
+                });
+            }
+
+            const safeFileName =
+                path.basename(
+                    metadata.originalName ||
+                    metadata.storedName ||
+                    "community-file"
+                );
+
+            res.setHeader(
+                "Content-Type",
+                metadata.mimeType ||
+                    "application/octet-stream"
             );
 
-        const {
-            data: metadataFile,
-            error: metadataError
-        } =
-            await supabaseAdmin.storage
-                .from(COMMUNITY_BUCKET)
-                .download(
-                    `metadata/${uploadId}.json`
+            res.setHeader(
+                "Content-Disposition",
+                `inline; filename="${safeFileName}"`
+            );
+
+            const buffer =
+                Buffer.from(
+                    await fileData.arrayBuffer()
                 );
 
-        if (metadataError) {
-            return res.status(404).json({
-                message:
-                    "Upload not found."
-            });
-        }
+            return res.send(
+                buffer
+            );
 
-        const metadataText =
-            await metadataFile.text();
+        } catch (error) {
 
-        const metadata =
-            JSON.parse(metadataText);
-
-        if (
-            !metadata ||
-            metadata.status !== "approved"
-        ) {
-            return res.status(403).json({
-                message:
-                    "This upload is not publicly available."
-            });
-        }
-
-        const {
-            data: fileData,
-            error: fileError
-        } =
-            await supabaseAdmin.storage
-                .from(COMMUNITY_BUCKET)
-                .download(
-                    metadata.storagePath
-                );
-
-        if (fileError) {
             console.error(
-                "STORAGE FILE DOWNLOAD ERROR:",
-                fileError
+                "PUBLIC UPLOAD FILE ERROR:",
+                error
             );
 
-            return res.status(404).json({
+            return res.status(500).json({
                 message:
-                    "File not found."
+                    "Could not load upload."
             });
         }
-
-        res.setHeader(
-            "Content-Type",
-            metadata.mimeType ||
-            "application/octet-stream"
-        );
-
-        res.setHeader(
-            "Content-Disposition",
-            `inline; filename="${metadata.originalName || metadata.storedName}"`
-        );
-
-        const buffer =
-            Buffer.from(
-                await fileData.arrayBuffer()
-            );
-
-        return res.send(buffer);
-
-    } catch (error) {
-
-        console.error(
-            "PUBLIC UPLOAD FILE ERROR:",
-            error
-        );
-
-        return res.status(500).json({
-            message:
-                "Could not load upload."
-        });
     }
-});
+);
 
 /* =========================
-   ADMIN UPLOAD MANAGEMENT
+   ADMIN AUTH HELPER
 ========================= */
 
 function verifyAdminToken(req) {
-    const authorization =
-        req.headers.authorization || "";
 
-    if (!authorization.startsWith("Bearer ")) {
+    const authorization =
+        req.headers.authorization ||
+        "";
+
+    if (
+        !authorization.startsWith(
+            "Bearer "
+        )
+    ) {
         return false;
     }
 
@@ -790,12 +1023,16 @@ function verifyAdminToken(req) {
     const parts =
         token.split(".");
 
-    if (parts.length !== 2) {
+    if (
+        parts.length !== 2
+    ) {
         return false;
     }
 
-    const [payload, signature] =
-        parts;
+    const [
+        payload,
+        signature
+    ] = parts;
 
     const expectedSignature =
         crypto
@@ -804,172 +1041,230 @@ function verifyAdminToken(req) {
                 ADMIN_TOKEN_SECRET
             )
             .update(payload)
-            .digest("base64url");
+            .digest(
+                "base64url"
+            );
 
-    if (signature !== expectedSignature) {
+    if (
+        signature !==
+        expectedSignature
+    ) {
         return false;
     }
 
     try {
+
         const data =
             JSON.parse(
                 Buffer.from(
                     payload,
                     "base64url"
-                ).toString("utf8")
+                ).toString(
+                    "utf8"
+                )
             );
 
-        if (data.role !== "admin") {
+        if (
+            data.role !==
+            "admin"
+        ) {
             return false;
         }
 
         return true;
 
     } catch {
+
         return false;
     }
 }
 
+/* =========================
+   ADMIN UPLOAD MANAGEMENT
+========================= */
+
 /* GET ALL UPLOADS */
 
-app.get("/api/admin/uploads", async (req, res) => {
+app.get(
+    "/api/admin/uploads",
+    async (req, res) => {
 
-    if (!verifyAdminToken(req)) {
-        return res.status(401).json({
-            message: "Unauthorized."
-        });
-    }
+        if (
+            !verifyAdminToken(req)
+        ) {
 
-    try {
-
-        const { data, error } =
-            await supabaseAdmin.storage
-                .from(COMMUNITY_BUCKET)
-                .list("metadata", {
-                    limit: 100,
-                    sortBy: {
-                        column: "name",
-                        order: "desc"
-                    }
-                });
-
-        if (error) {
-            throw error;
-        }
-
-        const uploads = [];
-
-        for (const file of data || []) {
-
-            if (!file.name.endsWith(".json")) {
-                continue;
-            }
-
-            try {
-
-                const {
-                    data: metadataFile,
-                    error: metadataError
-                } =
-                    await supabaseAdmin.storage
-                        .from(COMMUNITY_BUCKET)
-                        .download(
-                            `metadata/${file.name}`
-                        );
-
-                if (metadataError) {
-                    console.error(
-                        "ADMIN METADATA DOWNLOAD ERROR:",
-                        metadataError
-                    );
-                    continue;
-                }
-
-                const metadataText =
-                    await metadataFile.text();
-
-                const metadata =
-                    JSON.parse(metadataText);
-
-                if (metadata) {
-                    uploads.push(metadata);
-                }
-
-            } catch (metadataParseError) {
-
-                console.error(
-                    "ADMIN METADATA PARSE ERROR:",
-                    metadataParseError
-                );
-
-            }
-        }
-
-        uploads.sort(
-            (a, b) =>
-                new Date(
-                    b.uploadedAt
-                ) -
-                new Date(
-                    a.uploadedAt
-                )
-        );
-
-        return res.json({
-            uploads
-        });
-
-    } catch (error) {
-
-        console.error(
-            "ADMIN UPLOAD LIST ERROR:",
-            error
-        );
-
-        return res.status(500).json({
-            message:
-                "Could not load uploads."
-        });
-    }
-});
-
-/* APPROVE UPLOAD */
-
-app.post(
-    "/api/admin/uploads/:id/approve",
-    (req, res) => {
-
-        if (!verifyAdminToken(req)) {
             return res.status(401).json({
-                message: "Unauthorized."
-            });
-        }
-
-        const id =
-            String(req.params.id);
-
-        const metadataPath =
-            path.join(
-                uploadDir,
-                `${id}.json`
-            );
-
-        if (!fs.existsSync(metadataPath)) {
-            return res.status(404).json({
                 message:
-                    "Upload not found."
+                    "Unauthorized."
             });
         }
 
         try {
 
-            const metadata =
-                JSON.parse(
-                    fs.readFileSync(
-                        metadataPath,
-                        "utf8"
+            const {
+                data,
+                error
+            } =
+                await supabaseAdmin
+                    .storage
+                    .from(
+                        COMMUNITY_BUCKET
                     )
+                    .list(
+                        "metadata",
+                        {
+                            limit: 100,
+
+                            sortBy: {
+                                column:
+                                    "name",
+                                order:
+                                    "desc"
+                            }
+                        }
+                    );
+
+            if (error) {
+                throw error;
+            }
+
+            const uploads = [];
+
+            for (
+                const file of
+                data || []
+            ) {
+
+                if (
+                    !file.name.endsWith(
+                        ".json"
+                    )
+                ) {
+                    continue;
+                }
+
+                try {
+
+                    const {
+                        data:
+                            metadataFile,
+                        error:
+                            metadataError
+                    } =
+                        await supabaseAdmin
+                            .storage
+                            .from(
+                                COMMUNITY_BUCKET
+                            )
+                            .download(
+                                `metadata/${file.name}`
+                            );
+
+                    if (
+                        metadataError
+                    ) {
+
+                        console.error(
+                            "ADMIN METADATA DOWNLOAD ERROR:",
+                            metadataError
+                        );
+
+                        continue;
+                    }
+
+                    const metadataText =
+                        await metadataFile.text();
+
+                    const metadata =
+                        JSON.parse(
+                            metadataText
+                        );
+
+                    if (metadata) {
+                        uploads.push(
+                            metadata
+                        );
+                    }
+
+                } catch (
+                    metadataParseError
+                ) {
+
+                    console.error(
+                        "ADMIN METADATA PARSE ERROR:",
+                        metadataParseError
+                    );
+                }
+            }
+
+            uploads.sort(
+                (a, b) =>
+                    new Date(
+                        b.uploadedAt
+                    ) -
+                    new Date(
+                        a.uploadedAt
+                    )
+            );
+
+            return res.json({
+                uploads
+            });
+
+        } catch (error) {
+
+            console.error(
+                "ADMIN UPLOAD LIST ERROR:",
+                error
+            );
+
+            return res.status(500).json({
+                message:
+                    "Could not load uploads."
+            });
+        }
+    }
+);
+
+/* =========================
+   APPROVE UPLOAD
+========================= */
+
+app.post(
+    "/api/admin/uploads/:id/approve",
+    async (req, res) => {
+
+        if (
+            !verifyAdminToken(req)
+        ) {
+
+            return res.status(401).json({
+                message:
+                    "Unauthorized."
+            });
+        }
+
+        const id =
+            path.basename(
+                String(
+                    req.params.id
+                )
+            );
+
+        try {
+
+            const metadata =
+                await getUploadMetadata(
+                    id
                 );
+
+            if (!metadata) {
+
+                return res.status(404).json({
+                    message:
+                        "Upload not found."
+                });
+            }
 
             metadata.status =
                 "approved";
@@ -977,14 +1272,9 @@ app.post(
             metadata.reviewedAt =
                 new Date().toISOString();
 
-            fs.writeFileSync(
-                metadataPath,
-                JSON.stringify(
-                    metadata,
-                    null,
-                    2
-                ),
-                "utf8"
+            await uploadJsonToCommunityStorage(
+                `metadata/${id}.json`,
+                metadata
             );
 
             return res.json({
@@ -1008,43 +1298,45 @@ app.post(
     }
 );
 
-/* REJECT UPLOAD */
+/* =========================
+   REJECT UPLOAD
+========================= */
 
 app.post(
     "/api/admin/uploads/:id/reject",
-    (req, res) => {
+    async (req, res) => {
 
-        if (!verifyAdminToken(req)) {
+        if (
+            !verifyAdminToken(req)
+        ) {
+
             return res.status(401).json({
-                message: "Unauthorized."
+                message:
+                    "Unauthorized."
             });
         }
 
         const id =
-            String(req.params.id);
-
-        const metadataPath =
-            path.join(
-                uploadDir,
-                `${id}.json`
+            path.basename(
+                String(
+                    req.params.id
+                )
             );
-
-        if (!fs.existsSync(metadataPath)) {
-            return res.status(404).json({
-                message:
-                    "Upload not found."
-            });
-        }
 
         try {
 
             const metadata =
-                JSON.parse(
-                    fs.readFileSync(
-                        metadataPath,
-                        "utf8"
-                    )
+                await getUploadMetadata(
+                    id
                 );
+
+            if (!metadata) {
+
+                return res.status(404).json({
+                    message:
+                        "Upload not found."
+                });
+            }
 
             metadata.status =
                 "rejected";
@@ -1052,14 +1344,9 @@ app.post(
             metadata.reviewedAt =
                 new Date().toISOString();
 
-            fs.writeFileSync(
-                metadataPath,
-                JSON.stringify(
-                    metadata,
-                    null,
-                    2
-                ),
-                "utf8"
+            await uploadJsonToCommunityStorage(
+                `metadata/${id}.json`,
+                metadata
             );
 
             return res.json({
@@ -1083,55 +1370,76 @@ app.post(
     }
 );
 
-/* DELETE UPLOAD */
+/* =========================
+   DELETE UPLOAD
+========================= */
 
 app.delete(
     "/api/admin/uploads/:id",
-    (req, res) => {
+    async (req, res) => {
 
-        if (!verifyAdminToken(req)) {
+        if (
+            !verifyAdminToken(req)
+        ) {
+
             return res.status(401).json({
-                message: "Unauthorized."
+                message:
+                    "Unauthorized."
             });
         }
 
         const id =
-            String(req.params.id);
-
-        const metadataPath =
-            path.join(
-                uploadDir,
-                `${id}.json`
+            path.basename(
+                String(
+                    req.params.id
+                )
             );
-
-        if (!fs.existsSync(metadataPath)) {
-            return res.status(404).json({
-                message:
-                    "Upload not found."
-            });
-        }
 
         try {
 
             const metadata =
-                JSON.parse(
-                    fs.readFileSync(
-                        metadataPath,
-                        "utf8"
-                    )
+                await getUploadMetadata(
+                    id
                 );
 
-            const filePath =
-                path.join(
-                    uploadDir,
-                    metadata.storedName
-                );
+            if (!metadata) {
 
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+                return res.status(404).json({
+                    message:
+                        "Upload not found."
+                });
             }
 
-            fs.unlinkSync(metadataPath);
+            const filesToDelete = [];
+
+            if (
+                metadata.storagePath
+            ) {
+
+                filesToDelete.push(
+                    metadata.storagePath
+                );
+            }
+
+            filesToDelete.push(
+                `metadata/${id}.json`
+            );
+
+            const {
+                error: deleteError
+            } =
+                await supabaseAdmin
+                    .storage
+                    .from(
+                        COMMUNITY_BUCKET
+                    )
+                    .remove(
+                        filesToDelete
+                    );
+
+            if (deleteError) {
+                throw deleteError;
+            }
 
             return res.json({
                 success: true,
@@ -1164,9 +1472,11 @@ app.post(
     upload.single("file"),
 
     async (req, res) => {
+
         try {
 
             if (!req.file) {
+
                 return res.status(400).json({
                     message:
                         "Please choose a file to upload."
@@ -1185,23 +1495,39 @@ app.post(
 
                 name:
                     String(
-                        req.body?.name || ""
-                    ).slice(0, 120),
+                        req.body?.name ||
+                        ""
+                    ).slice(
+                        0,
+                        120
+                    ),
 
                 title:
                     String(
-                        req.body?.title || ""
-                    ).slice(0, 200),
+                        req.body?.title ||
+                        ""
+                    ).slice(
+                        0,
+                        200
+                    ),
 
                 category:
                     String(
-                        req.body?.category || ""
-                    ).slice(0, 50),
+                        req.body?.category ||
+                        ""
+                    ).slice(
+                        0,
+                        50
+                    ),
 
                 description:
                     String(
-                        req.body?.description || ""
-                    ).slice(0, 2000),
+                        req.body?.description ||
+                        ""
+                    ).slice(
+                        0,
+                        2000
+                    ),
 
                 originalName:
                     req.file.originalname,
@@ -1225,7 +1551,7 @@ app.post(
                     "pending"
             };
 
-            /* Upload actual file to Supabase Storage */
+            /* Upload actual file */
 
             await uploadToCommunityStorage(
                 req.file.path,
@@ -1233,19 +1559,21 @@ app.post(
                 metadata.mimeType
             );
 
-            /* Upload metadata to Supabase Storage */
+            /* Upload metadata */
 
             await uploadJsonToCommunityStorage(
                 `metadata/${metadata.id}.json`,
                 metadata
             );
 
-            /* Remove temporary Render file */
+            /* Delete temporary Render file */
 
             try {
+
                 await fs.promises.unlink(
                     req.file.path
                 );
+
             } catch {}
 
             return res.status(201).json({
@@ -1264,11 +1592,16 @@ app.post(
                 error
             );
 
-            if (req.file?.path) {
+            if (
+                req.file?.path
+            ) {
+
                 try {
+
                     await fs.promises.unlink(
                         req.file.path
                     );
+
                 } catch {}
             }
 
@@ -1285,7 +1618,12 @@ app.post(
 ========================= */
 
 app.use(
-    (error, _req, res, _next) => {
+    (
+        error,
+        _req,
+        res,
+        _next
+    ) => {
 
         console.error(
             "SERVER ERROR:",
