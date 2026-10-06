@@ -901,35 +901,55 @@ app.get(
 
         try {
 
-            const uploadId =
-                path.basename(
-                    String(
-                        req.params.id
-                    )
+            const authHeader =
+                req.headers.authorization || "";
+
+            if (!authHeader.startsWith("Bearer ")) {
+
+                return res.status(401).json({
+                    message: "Authentication required."
+                });
+
+            }
+
+            const accessToken =
+                authHeader.substring(7);
+
+            const {
+                data: { user },
+                error: authError
+            } =
+                await supabaseAdmin.auth.getUser(
+                    accessToken
                 );
+
+            if (authError || !user) {
+
+                return res.status(401).json({
+                    message: "Invalid or expired session."
+                });
+
+            }
 
             const metadata =
                 await getUploadMetadata(
-                    uploadId
+                    req.params.id
                 );
 
             if (!metadata) {
 
                 return res.status(404).json({
-                    message:
-                        "Upload not found."
+                    message: "Upload not found."
                 });
+
             }
 
-            if (
-                metadata.status !==
-                "approved"
-            ) {
+            if (metadata.status !== "approved") {
 
-                return res.status(403).json({
-                    message:
-                        "This upload is not publicly available."
+                return res.status(404).json({
+                    message: "Upload not available."
                 });
+
             }
 
             const {
@@ -937,25 +957,28 @@ app.get(
                 error: fileError
             } =
                 await supabaseAdmin.storage
-                    .from(
-                        COMMUNITY_BUCKET
-                    )
+                    .from(COMMUNITY_BUCKET)
                     .download(
                         metadata.storagePath
                     );
 
-            if (fileError) {
+            if (fileError || !fileData) {
 
                 console.error(
-                    "STORAGE FILE DOWNLOAD ERROR:",
+                    "COMMUNITY FILE DOWNLOAD ERROR:",
                     fileError
                 );
 
                 return res.status(404).json({
-                    message:
-                        "File not found."
+                    message: "File not found."
                 });
+
             }
+
+            const buffer =
+                Buffer.from(
+                    await fileData.arrayBuffer()
+                );
 
             const safeFileName =
                 path.basename(
@@ -967,7 +990,7 @@ app.get(
             res.setHeader(
                 "Content-Type",
                 metadata.mimeType ||
-                    "application/octet-stream"
+                "application/octet-stream"
             );
 
             res.setHeader(
@@ -975,27 +998,21 @@ app.get(
                 `inline; filename="${safeFileName}"`
             );
 
-            const buffer =
-                Buffer.from(
-                    await fileData.arrayBuffer()
-                );
-
-            return res.send(
-                buffer
-            );
+            res.send(buffer);
 
         } catch (error) {
 
             console.error(
-                "PUBLIC UPLOAD FILE ERROR:",
+                "COMMUNITY FILE ERROR:",
                 error
             );
 
-            return res.status(500).json({
-                message:
-                    "Could not load upload."
+            res.status(500).json({
+                message: "Unable to access file."
             });
+
         }
+
     }
 );
 
