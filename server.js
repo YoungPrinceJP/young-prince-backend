@@ -739,60 +739,29 @@ app.get(
 );
 
 
+
 /* =========================
-   KAEL AI — GROK (xAI)
+   KAEL AI — OPENROUTER
 ========================= */
 
-app.post(
-    "/api/kael",
-    kaelLimiter,
+const ai = process.env.OPENROUTER_API_KEY
+    ? new OpenAI({
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+            "X-Title": "Young Prince — Kael AI",
+            "HTTP-Referer": "https://youngprincejp.github.io/"
+        }
+    })
+    : null;
 
-    async (req, res) => {
-
-        try {
-
-            const message =
-                typeof req.body?.message ===
-                "string"
-                    ? req.body.message.trim()
-                    : "";
-
-            if (!message) {
-
-                return res.status(400).json({
-                    message:
-                        "Please enter a message."
-                });
-
-            }
-
-            if (
-                message.length > 4000
-            ) {
-
-                return res.status(400).json({
-                    message:
-                        "Your message is too long. Please keep it under 4,000 characters."
-                });
-
-            }
-
-            if (!ai) {
-
-                return res.status(503).json({
-                    message:
-                        "Kael is not configured yet."
-                });
-
-            }
-
-            const completion =
-                await ai.chat.completions.create({
 
                     
+
 model:
-    process.env.XAI_MODEL ||
-    "grok-4.7",
+    process.env.OPENROUTER_MODEL ||
+    "openrouter/free",
+
 
 
                     messages: [
