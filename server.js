@@ -5,12 +5,9 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
 import OpenAI from "openai";
-import sharp from "sharp";
-import ffmpegPath from "ffmpeg-static";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 
 /* =========================
@@ -26,34 +23,23 @@ const COMMUNITY_BUCKET =
     "community-uploads";
 
 /* =========================
-   STORAGE PATHS
-========================= */
-
-const COMMUNITY_FILES_FOLDER =
-    "files";
-
-const COMMUNITY_METADATA_FOLDER =
-    "metadata";
-
-const COMMUNITY_THUMBNAILS_FOLDER =
-    "thumbnails";
-
-/* =========================
    SUPABASE STORAGE HELPERS
 ========================= */
 
-async function uploadBufferToCommunityStorage(
-    buffer,
+async function uploadToCommunityStorage(
+    filePath,
     storagePath,
     contentType
 ) {
+    const fileBuffer =
+        await fs.promises.readFile(filePath);
 
     const { error } =
         await supabaseAdmin.storage
             .from(COMMUNITY_BUCKET)
             .upload(
                 storagePath,
-                buffer,
+                fileBuffer,
                 {
                     contentType,
                     upsert: true
@@ -65,31 +51,10 @@ async function uploadBufferToCommunityStorage(
     }
 }
 
-
-async function uploadToCommunityStorage(
-    filePath,
-    storagePath,
-    contentType
-) {
-
-    const fileBuffer =
-        await fs.promises.readFile(
-            filePath
-        );
-
-    await uploadBufferToCommunityStorage(
-        fileBuffer,
-        storagePath,
-        contentType
-    );
-}
-
-
 async function uploadJsonToCommunityStorage(
     storagePath,
     data
 ) {
-
     const { error } =
         await supabaseAdmin.storage
             .from(COMMUNITY_BUCKET)
@@ -112,7 +77,6 @@ async function uploadJsonToCommunityStorage(
     }
 }
 
-
 async function getUploadMetadata(id) {
 
     const uploadId =
@@ -127,7 +91,7 @@ async function getUploadMetadata(id) {
         await supabaseAdmin.storage
             .from(COMMUNITY_BUCKET)
             .download(
-                `${COMMUNITY_METADATA_FOLDER}/${uploadId}.json`
+                `metadata/${uploadId}.json`
             );
 
     if (metadataError) {
@@ -138,242 +102,13 @@ async function getUploadMetadata(id) {
         await metadataFile.text();
 
     try {
-
         return JSON.parse(
             metadataText
         );
-
     } catch {
-
-        return null;
-
-    }
-}
-
-
-/* =========================
-   PUBLIC THUMBNAIL URL
-========================= */
-
-function getPublicThumbnailUrl(
-    thumbnailPath
-) {
-
-    if (!thumbnailPath) {
         return null;
     }
-
-    const {
-        data
-    } =
-        supabaseAdmin.storage
-            .from(COMMUNITY_BUCKET)
-            .getPublicUrl(
-                thumbnailPath
-            );
-
-    return data?.publicUrl || null;
 }
-
-
-/* =========================
-   IMAGE THUMBNAIL
-========================= */
-
-async function createImageThumbnail(
-    sourcePath,
-    thumbnailPath
-) {
-
-    const thumbnailBuffer =
-        await sharp(sourcePath)
-            .rotate()
-            .resize(
-                640,
-                420,
-                {
-                    fit: "cover",
-                    position: "centre"
-                }
-            )
-            .jpeg({
-                quality: 82
-            })
-            .toBuffer();
-
-    await uploadBufferToCommunityStorage(
-        thumbnailBuffer,
-        thumbnailPath,
-        "image/jpeg"
-    );
-}
-
-
-/* =========================
-   VIDEO THUMBNAIL
-========================= */
-
-async function createVideoThumbnail(
-    sourcePath,
-    thumbnailPath
-) {
-
-    if (!ffmpegPath) {
-
-        throw new Error(
-            "FFmpeg is not available."
-        );
-
-    }
-
-    const temporaryThumbnail =
-        path.join(
-            uploadDir,
-            `thumb-${crypto
-                .randomBytes(8)
-                .toString("hex")}.jpg`
-        );
-
-    await new Promise(
-        (
-            resolve,
-            reject
-        ) => {
-
-            const ffmpeg =
-                spawn(
-                    ffmpegPath,
-                    [
-                        "-y",
-                        "-ss",
-                        "00:00:01",
-                        "-i",
-                        sourcePath,
-                        "-frames:v",
-                        "1",
-                        "-vf",
-                        "scale=640:420:force_original_aspect_ratio=increase,crop=640:420",
-                        "-q:v",
-                        "3",
-                        temporaryThumbnail
-                    ],
-                    {
-                        windowsHide:
-                            true
-                    }
-                );
-
-            let stderr = "";
-
-            ffmpeg.stderr.on(
-                "data",
-                data => {
-                    stderr += data.toString();
-                }
-            );
-
-            ffmpeg.on(
-                "error",
-                reject
-            );
-
-            ffmpeg.on(
-                "close",
-                code => {
-
-                    if (
-                        code !== 0
-                    ) {
-
-                        reject(
-                            new Error(
-                                `FFmpeg failed: ${stderr}`
-                            )
-                        );
-
-                        return;
-                    }
-
-                    resolve();
-
-                }
-            );
-
-        }
-    );
-
-    try {
-
-        const thumbnailBuffer =
-            await fs.promises.readFile(
-                temporaryThumbnail
-            );
-
-        await uploadBufferToCommunityStorage(
-            thumbnailBuffer,
-            thumbnailPath,
-            "image/jpeg"
-        );
-
-    } finally {
-
-        try {
-
-            await fs.promises.unlink(
-                temporaryThumbnail
-            );
-
-        } catch {}
-
-    }
-}
-
-
-/* =========================
-   GENERATE THUMBNAIL
-========================= */
-
-async function generateThumbnailForFile(
-    filePath,
-    metadata
-) {
-
-    const thumbnailPath =
-        `${COMMUNITY_THUMBNAILS_FOLDER}/${metadata.id}.jpg`;
-
-    if (
-        metadata.mimeType &&
-        metadata.mimeType.startsWith(
-            "image/"
-        )
-    ) {
-
-        await createImageThumbnail(
-            filePath,
-            thumbnailPath
-        );
-
-    } else if (
-        metadata.mimeType &&
-        metadata.mimeType.startsWith(
-            "video/"
-        )
-    ) {
-
-        await createVideoThumbnail(
-            filePath,
-            thumbnailPath
-        );
-
-    } else {
-
-        return null;
-
-    }
-
-    return thumbnailPath;
-}
-
 
 /* =========================
    APP
@@ -434,7 +169,6 @@ app.set(
     1
 );
 
-
 /* =========================
    SECURITY
 ========================= */
@@ -472,7 +206,6 @@ app.use(
         limit: "1mb"
     })
 );
-
 
 /* =========================
    RATE LIMITING
@@ -516,21 +249,28 @@ app.use(
     apiLimiter
 );
 
-
-
 /* =========================
-   GROK AI (xAI)
+   OPENROUTER AI
 ========================= */
 
 const ai =
-    process.env.XAI_API_KEY
+    process.env.OPENROUTER_API_KEY
         ? new OpenAI({
-            apiKey: process.env.XAI_API_KEY,
-            baseURL: "https://api.x.ai/v1"
+            apiKey:
+                process.env.OPENROUTER_API_KEY,
+
+            baseURL:
+                "https://openrouter.ai/api/v1",
+
+            defaultHeaders: {
+                "HTTP-Referer":
+                    "https://youngprincejp.github.io",
+
+                "X-Title":
+                    "Young Prince"
+            }
         })
         : null;
-
-
 
 /* =========================
    FILE TYPES
@@ -562,7 +302,6 @@ const allowedMimeTypes =
         "text/plain"
     ]);
 
-
 /* =========================
    TEMPORARY MULTER STORAGE
 ========================= */
@@ -577,7 +316,6 @@ const storage =
                     null,
                     uploadDir
                 );
-
             },
 
         filename:
@@ -599,7 +337,6 @@ const storage =
                     null,
                     filename
                 );
-
             }
     });
 
@@ -627,17 +364,14 @@ const upload =
                             "This file type is not supported."
                         )
                     );
-
                 }
 
                 callback(
                     null,
                     true
                 );
-
             }
     });
-
 
 /* =========================
    ADMIN AUTHENTICATION
@@ -661,7 +395,6 @@ app.post(
                 message:
                     "Admin authentication is not configured."
             });
-
         }
 
         if (
@@ -673,7 +406,6 @@ app.post(
                 message:
                     "Invalid admin password."
             });
-
         }
 
         const tokenData = {
@@ -710,10 +442,8 @@ app.post(
                 "Admin login successful.",
             token
         });
-
     }
 );
-
 
 /* =========================
    HEALTH CHECK
@@ -729,40 +459,62 @@ app.get(
                 "young-prince-backend",
             kael:
                 Boolean(ai),
-            thumbnails:
-                true,
             time:
                 new Date().toISOString()
         });
-
     }
 );
-
-
 
 /* =========================
    KAEL AI — OPENROUTER
 ========================= */
 
-const ai = process.env.OPENROUTER_API_KEY
-    ? new OpenAI({
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: "https://openrouter.ai/api/v1",
-        defaultHeaders: {
-            "X-Title": "Young Prince — Kael AI",
-            "HTTP-Referer": "https://youngprincejp.github.io/"
-        }
-    })
-    : null;
+app.post(
+    "/api/kael",
+    kaelLimiter,
 
+    async (req, res) => {
 
-                    
+        try {
 
-model:
-    process.env.OPENROUTER_MODEL ||
-    "openrouter/free",
+            const message =
+                typeof req.body?.message ===
+                "string"
+                    ? req.body.message.trim()
+                    : "";
 
+            if (!message) {
 
+                return res.status(400).json({
+                    message:
+                        "Please enter a message."
+                });
+            }
+
+            if (
+                message.length > 4000
+            ) {
+
+                return res.status(400).json({
+                    message:
+                        "Your message is too long. Please keep it under 4,000 characters."
+                });
+            }
+
+            if (!ai) {
+
+                return res.status(503).json({
+                    message:
+                        "Kael is not configured yet."
+                });
+            }
+
+            const completion =
+                await ai.chat.completions.create({
+
+                    model:
+                        process.env.OPENROUTER_MODEL ||
+                        "openrouter/free",
 
                     messages: [
 
@@ -994,12 +746,9 @@ You are the AI companion of Young Prince.
                 message:
                     "Kael encountered a temporary server error."
             });
-
         }
-
     }
 );
-
 
 /* =========================
    PUBLIC APPROVED UPLOADS
@@ -1020,7 +769,7 @@ app.get(
                         COMMUNITY_BUCKET
                     )
                     .list(
-                        COMMUNITY_METADATA_FOLDER,
+                        "metadata",
                         {
                             limit: 100,
 
@@ -1066,7 +815,7 @@ app.get(
                                 COMMUNITY_BUCKET
                             )
                             .download(
-                                `${COMMUNITY_METADATA_FOLDER}/${file.name}`
+                                `metadata/${file.name}`
                             );
 
                     if (
@@ -1095,21 +844,9 @@ app.get(
                             "approved"
                     ) {
 
-                        if (
-                            metadata.thumbnailPath
-                        ) {
-
-                            metadata.thumbnailUrl =
-                                getPublicThumbnailUrl(
-                                    metadata.thumbnailPath
-                                );
-
-                        }
-
                         uploads.push(
                             metadata
                         );
-
                     }
 
                 } catch (
@@ -1120,9 +857,7 @@ app.get(
                         "METADATA PARSE ERROR:",
                         parseError
                     );
-
                 }
-
             }
 
             uploads.sort(
@@ -1152,122 +887,12 @@ app.get(
                 message:
                     "Could not load approved uploads."
             });
-
         }
-
     }
 );
 
-
 /* =========================
-   PUBLIC THUMBNAIL
-========================= */
-
-app.get(
-    "/api/uploads/:id/thumbnail",
-    async (req, res) => {
-
-        try {
-
-            const metadata =
-                await getUploadMetadata(
-                    req.params.id
-                );
-
-            if (!metadata) {
-
-                return res.status(404).json({
-                    message:
-                        "Upload not found."
-                });
-
-            }
-
-            if (
-                metadata.status !==
-                "approved"
-            ) {
-
-                return res.status(404).json({
-                    message:
-                        "Thumbnail not available."
-                });
-
-            }
-
-            if (
-                !metadata.thumbnailPath
-            ) {
-
-                return res.status(404).json({
-                    message:
-                        "Thumbnail not available."
-                });
-
-            }
-
-            const {
-                data: thumbnailFile,
-                error
-            } =
-                await supabaseAdmin
-                    .storage
-                    .from(
-                        COMMUNITY_BUCKET
-                    )
-                    .download(
-                        metadata.thumbnailPath
-                    );
-
-            if (
-                error ||
-                !thumbnailFile
-            ) {
-
-                return res.status(404).json({
-                    message:
-                        "Thumbnail not found."
-                });
-
-            }
-
-            const buffer =
-                Buffer.from(
-                    await thumbnailFile.arrayBuffer()
-                );
-
-            res.setHeader(
-                "Content-Type",
-                "image/jpeg"
-            );
-
-            res.setHeader(
-                "Cache-Control",
-                "public, max-age=31536000, immutable"
-            );
-
-            res.send(buffer);
-
-        } catch (error) {
-
-            console.error(
-                "THUMBNAIL ERROR:",
-                error
-            );
-
-            return res.status(500).json({
-                message:
-                    "Unable to load thumbnail."
-            });
-
-        }
-
-    }
-);
-
-
-/* =========================
-   PROTECTED ORIGINAL FILE
+   PUBLIC APPROVED UPLOAD FILE
 ========================= */
 
 app.get(
@@ -1279,15 +904,10 @@ app.get(
             const authHeader =
                 req.headers.authorization || "";
 
-            if (
-                !authHeader.startsWith(
-                    "Bearer "
-                )
-            ) {
+            if (!authHeader.startsWith("Bearer ")) {
 
                 return res.status(401).json({
-                    message:
-                        "Authentication required."
+                    message: "Authentication required."
                 });
 
             }
@@ -1303,14 +923,10 @@ app.get(
                     accessToken
                 );
 
-            if (
-                authError ||
-                !user
-            ) {
+            if (authError || !user) {
 
                 return res.status(401).json({
-                    message:
-                        "Invalid or expired session."
+                    message: "Invalid or expired session."
                 });
 
             }
@@ -1323,20 +939,15 @@ app.get(
             if (!metadata) {
 
                 return res.status(404).json({
-                    message:
-                        "Upload not found."
+                    message: "Upload not found."
                 });
 
             }
 
-            if (
-                metadata.status !==
-                "approved"
-            ) {
+            if (metadata.status !== "approved") {
 
                 return res.status(404).json({
-                    message:
-                        "Upload not available."
+                    message: "Upload not available."
                 });
 
             }
@@ -1346,17 +957,12 @@ app.get(
                 error: fileError
             } =
                 await supabaseAdmin.storage
-                    .from(
-                        COMMUNITY_BUCKET
-                    )
+                    .from(COMMUNITY_BUCKET)
                     .download(
                         metadata.storagePath
                     );
 
-            if (
-                fileError ||
-                !fileData
-            ) {
+            if (fileError || !fileData) {
 
                 console.error(
                     "COMMUNITY FILE DOWNLOAD ERROR:",
@@ -1364,8 +970,7 @@ app.get(
                 );
 
                 return res.status(404).json({
-                    message:
-                        "File not found."
+                    message: "File not found."
                 });
 
             }
@@ -1403,15 +1008,13 @@ app.get(
             );
 
             res.status(500).json({
-                message:
-                    "Unable to access file."
+                message: "Unable to access file."
             });
 
         }
 
     }
 );
-
 
 /* =========================
    ADMIN AUTH HELPER
@@ -1490,14 +1093,14 @@ function verifyAdminToken(req) {
     } catch {
 
         return false;
-
     }
 }
-
 
 /* =========================
    ADMIN UPLOAD MANAGEMENT
 ========================= */
+
+/* GET ALL UPLOADS */
 
 app.get(
     "/api/admin/uploads",
@@ -1511,7 +1114,6 @@ app.get(
                 message:
                     "Unauthorized."
             });
-
         }
 
         try {
@@ -1526,7 +1128,7 @@ app.get(
                         COMMUNITY_BUCKET
                     )
                     .list(
-                        COMMUNITY_METADATA_FOLDER,
+                        "metadata",
                         {
                             limit: 100,
 
@@ -1572,15 +1174,19 @@ app.get(
                                 COMMUNITY_BUCKET
                             )
                             .download(
-                                `${COMMUNITY_METADATA_FOLDER}/${file.name}`
+                                `metadata/${file.name}`
                             );
 
                     if (
                         metadataError
                     ) {
 
-                        continue;
+                        console.error(
+                            "ADMIN METADATA DOWNLOAD ERROR:",
+                            metadataError
+                        );
 
+                        continue;
                     }
 
                     const metadataText =
@@ -1592,22 +1198,9 @@ app.get(
                         );
 
                     if (metadata) {
-
-                        if (
-                            metadata.thumbnailPath
-                        ) {
-
-                            metadata.thumbnailUrl =
-                                getPublicThumbnailUrl(
-                                    metadata.thumbnailPath
-                                );
-
-                        }
-
                         uploads.push(
                             metadata
                         );
-
                     }
 
                 } catch (
@@ -1618,9 +1211,7 @@ app.get(
                         "ADMIN METADATA PARSE ERROR:",
                         metadataParseError
                     );
-
                 }
-
             }
 
             uploads.sort(
@@ -1648,12 +1239,9 @@ app.get(
                 message:
                     "Could not load uploads."
             });
-
         }
-
     }
 );
-
 
 /* =========================
    APPROVE UPLOAD
@@ -1671,7 +1259,6 @@ app.post(
                 message:
                     "Unauthorized."
             });
-
         }
 
         const id =
@@ -1694,7 +1281,6 @@ app.post(
                     message:
                         "Upload not found."
                 });
-
             }
 
             metadata.status =
@@ -1704,7 +1290,7 @@ app.post(
                 new Date().toISOString();
 
             await uploadJsonToCommunityStorage(
-                `${COMMUNITY_METADATA_FOLDER}/${id}.json`,
+                `metadata/${id}.json`,
                 metadata
             );
 
@@ -1725,12 +1311,9 @@ app.post(
                 message:
                     "Could not approve upload."
             });
-
         }
-
     }
 );
-
 
 /* =========================
    REJECT UPLOAD
@@ -1748,7 +1331,6 @@ app.post(
                 message:
                     "Unauthorized."
             });
-
         }
 
         const id =
@@ -1771,7 +1353,6 @@ app.post(
                     message:
                         "Upload not found."
                 });
-
             }
 
             metadata.status =
@@ -1781,7 +1362,7 @@ app.post(
                 new Date().toISOString();
 
             await uploadJsonToCommunityStorage(
-                `${COMMUNITY_METADATA_FOLDER}/${id}.json`,
+                `metadata/${id}.json`,
                 metadata
             );
 
@@ -1802,12 +1383,9 @@ app.post(
                 message:
                     "Could not reject upload."
             });
-
         }
-
     }
 );
-
 
 /* =========================
    DELETE UPLOAD
@@ -1825,7 +1403,6 @@ app.delete(
                 message:
                     "Unauthorized."
             });
-
         }
 
         const id =
@@ -1848,7 +1425,6 @@ app.delete(
                     message:
                         "Upload not found."
                 });
-
             }
 
             const filesToDelete = [];
@@ -1860,21 +1436,10 @@ app.delete(
                 filesToDelete.push(
                     metadata.storagePath
                 );
-
-            }
-
-            if (
-                metadata.thumbnailPath
-            ) {
-
-                filesToDelete.push(
-                    metadata.thumbnailPath
-                );
-
             }
 
             filesToDelete.push(
-                `${COMMUNITY_METADATA_FOLDER}/${id}.json`
+                `metadata/${id}.json`
             );
 
             const {
@@ -1910,237 +1475,9 @@ app.delete(
                 message:
                     "Could not delete upload."
             });
-
         }
-
     }
 );
-
-
-/* =========================
-   GENERATE MISSING THUMBNAILS
-========================= */
-
-app.post(
-    "/api/admin/uploads/generate-thumbnails",
-    async (req, res) => {
-
-        if (
-            !verifyAdminToken(req)
-        ) {
-
-            return res.status(401).json({
-                message:
-                    "Unauthorized."
-            });
-
-        }
-
-        try {
-
-            const {
-                data,
-                error
-            } =
-                await supabaseAdmin.storage
-                    .from(
-                        COMMUNITY_BUCKET
-                    )
-                    .list(
-                        COMMUNITY_METADATA_FOLDER,
-                        {
-                            limit: 100
-                        }
-                    );
-
-            if (error) {
-                throw error;
-            }
-
-            let generated = 0;
-            let skipped = 0;
-            let failed = 0;
-
-            for (
-                const file of
-                data || []
-            ) {
-
-                if (
-                    !file.name.endsWith(
-                        ".json"
-                    )
-                ) {
-                    continue;
-                }
-
-                const id =
-                    path.basename(
-                        file.name,
-                        ".json"
-                    );
-
-                try {
-
-                    const metadata =
-                        await getUploadMetadata(
-                            id
-                        );
-
-                    if (!metadata) {
-                        skipped++;
-                        continue;
-                    }
-
-                    if (
-                        metadata.thumbnailPath
-                    ) {
-                        skipped++;
-                        continue;
-                    }
-
-                    if (
-                        !metadata.mimeType ||
-                        (
-                            !metadata.mimeType.startsWith(
-                                "image/"
-                            ) &&
-                            !metadata.mimeType.startsWith(
-                                "video/"
-                            )
-                        )
-                    ) {
-
-                        skipped++;
-                        continue;
-
-                    }
-
-                    const {
-                        data:
-                            originalFile,
-                        error:
-                            originalError
-                    } =
-                        await supabaseAdmin.storage
-                            .from(
-                                COMMUNITY_BUCKET
-                            )
-                            .download(
-                                metadata.storagePath
-                            );
-
-                    if (
-                        originalError ||
-                        !originalFile
-                    ) {
-
-                        failed++;
-                        continue;
-
-                    }
-
-                    const temporaryOriginal =
-                        path.join(
-                            uploadDir,
-                            `existing-${crypto
-                                .randomBytes(8)
-                                .toString("hex")}${path.extname(
-                                metadata.originalName ||
-                                metadata.storedName ||
-                                ".tmp"
-                            )}`
-                        );
-
-                    await fs.promises.writeFile(
-                        temporaryOriginal,
-                        Buffer.from(
-                            await originalFile.arrayBuffer()
-                        )
-                    );
-
-                    try {
-
-                        const thumbnailPath =
-                            await generateThumbnailForFile(
-                                temporaryOriginal,
-                                metadata
-                            );
-
-                        if (
-                            thumbnailPath
-                        ) {
-
-                            metadata.thumbnailPath =
-                                thumbnailPath;
-
-                            metadata.thumbnailUrl =
-                                getPublicThumbnailUrl(
-                                    thumbnailPath
-                                );
-
-                            await uploadJsonToCommunityStorage(
-                                `${COMMUNITY_METADATA_FOLDER}/${id}.json`,
-                                metadata
-                            );
-
-                            generated++;
-
-                        } else {
-
-                            skipped++;
-
-                        }
-
-                    } finally {
-
-                        try {
-
-                            await fs.promises.unlink(
-                                temporaryOriginal
-                            );
-
-                        } catch {}
-
-                    }
-
-                } catch (error) {
-
-                    failed++;
-
-                    console.error(
-                        `THUMBNAIL GENERATION FAILED FOR ${id}:`,
-                        error
-                    );
-
-                }
-
-            }
-
-            return res.json({
-                success: true,
-                generated,
-                skipped,
-                failed
-            });
-
-        } catch (error) {
-
-            console.error(
-                "GENERATE THUMBNAILS ERROR:",
-                error
-            );
-
-            return res.status(500).json({
-                message:
-                    "Could not generate thumbnails."
-            });
-
-        }
-
-    }
-);
-
 
 /* =========================
    UPLOAD
@@ -2161,7 +1498,6 @@ app.post(
                     message:
                         "Please choose a file to upload."
                 });
-
             }
 
             const metadata = {
@@ -2217,7 +1553,7 @@ app.post(
                     req.file.filename,
 
                 storagePath:
-                    `${COMMUNITY_FILES_FOLDER}/${req.file.filename}`,
+                    `files/${req.file.filename}`,
 
                 mimeType:
                     req.file.mimetype,
@@ -2229,17 +1565,10 @@ app.post(
                     new Date().toISOString(),
 
                 status:
-                    "pending",
-
-                thumbnailPath:
-                    null
-
+                    "pending"
             };
 
-
-            /* =========================
-               UPLOAD ORIGINAL
-            ========================= */
+            /* Upload actual file */
 
             await uploadToCommunityStorage(
                 req.file.path,
@@ -2247,61 +1576,14 @@ app.post(
                 metadata.mimeType
             );
 
-
-            /* =========================
-               GENERATE THUMBNAIL
-            ========================= */
-
-            try {
-
-                const thumbnailPath =
-                    await generateThumbnailForFile(
-                        req.file.path,
-                        metadata
-                    );
-
-                if (
-                    thumbnailPath
-                ) {
-
-                    metadata.thumbnailPath =
-                        thumbnailPath;
-
-                    metadata.thumbnailUrl =
-                        getPublicThumbnailUrl(
-                            thumbnailPath
-                        );
-
-                }
-
-            } catch (thumbnailError) {
-
-                console.error(
-                    "THUMBNAIL GENERATION ERROR:",
-                    thumbnailError
-                );
-
-                /*
-                 * Thumbnail failure does not
-                 * destroy the original upload.
-                 */
-
-            }
-
-
-            /* =========================
-               UPLOAD METADATA
-            ========================= */
+            /* Upload metadata */
 
             await uploadJsonToCommunityStorage(
-                `${COMMUNITY_METADATA_FOLDER}/${metadata.id}.json`,
+                `metadata/${metadata.id}.json`,
                 metadata
             );
 
-
-            /* =========================
-               DELETE TEMPORARY FILE
-            ========================= */
+            /* Delete temporary Render file */
 
             try {
 
@@ -2311,7 +1593,6 @@ app.post(
 
             } catch {}
 
-
             return res.status(201).json({
 
                 message:
@@ -2319,7 +1600,6 @@ app.post(
 
                 uploadId:
                     metadata.id
-
             });
 
         } catch (error) {
@@ -2340,19 +1620,15 @@ app.post(
                     );
 
                 } catch {}
-
             }
 
             return res.status(500).json({
                 message:
                     "The upload could not be completed."
             });
-
         }
-
     }
 );
-
 
 /* =========================
    ERROR HANDLER
@@ -2385,14 +1661,12 @@ app.use(
                     message:
                         `File is too large. Maximum size is ${MAX_UPLOAD_MB} MB.`
                 });
-
             }
 
             return res.status(400).json({
                 message:
                     error.message
             });
-
         }
 
         if (
@@ -2407,17 +1681,14 @@ app.use(
                 message:
                     error.message
             });
-
         }
 
         return res.status(500).json({
             message:
                 "Something went wrong on the server."
         });
-
     }
 );
-
 
 /* =========================
    START SERVER
@@ -2443,14 +1714,5 @@ app.listen(
         console.log(
             `Maximum upload size: ${MAX_UPLOAD_MB} MB`
         );
-
-        console.log(
-            `Community thumbnails: enabled`
-        );
-
-        console.log(
-            `FFmpeg available: ${Boolean(ffmpegPath)}`
-        );
-
     }
 );
