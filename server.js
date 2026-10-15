@@ -517,28 +517,19 @@ app.use(
 );
 
 
+
 /* =========================
-   OPENROUTER AI
+   GROK AI (xAI)
 ========================= */
 
 const ai =
-    process.env.OPENROUTER_API_KEY
+    process.env.XAI_API_KEY
         ? new OpenAI({
-            apiKey:
-                process.env.OPENROUTER_API_KEY,
-
-            baseURL:
-                "https://openrouter.ai/api/v1",
-
-            defaultHeaders: {
-                "HTTP-Referer":
-                    "https://youngprincejp.github.io",
-
-                "X-Title":
-                    "Young Prince"
-            }
+            apiKey: process.env.XAI_API_KEY,
+            baseURL: "https://api.x.ai/v1"
         })
         : null;
+
 
 
 /* =========================
@@ -749,7 +740,7 @@ app.get(
 
 
 /* =========================
-   KAEL AI — OPENROUTER
+   KAEL AI — GROK (xAI)
 ========================= */
 
 app.post(
@@ -798,9 +789,11 @@ app.post(
             const completion =
                 await ai.chat.completions.create({
 
-                    model:
-                        process.env.OPENROUTER_MODEL ||
-                        "openrouter/free",
+                    
+model:
+    process.env.XAI_MODEL ||
+    "grok-4.7",
+
 
                     messages: [
 
