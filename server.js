@@ -800,6 +800,71 @@ return res.json({
     }
 );
 
+
+/* =========================
+   KAEL CLOUD CHAT HISTORY
+========================= */
+
+app.get(
+    "/api/kael/history",
+    async (req, res) => {
+        try {
+            const authHeader =
+                req.headers.authorization || "";
+
+            if (!authHeader.startsWith("Bearer ")) {
+                return res.status(401).json({
+                    message: "Please sign in to load your saved chats."
+                });
+            }
+
+            const accessToken =
+                authHeader.substring(7);
+
+            const {
+                data: { user },
+                error: authError
+            } = await supabaseAdmin.auth.getUser(
+                accessToken
+            );
+
+            if (authError || !user) {
+                return res.status(401).json({
+                    message: "Your session is invalid. Please sign in again."
+                });
+            }
+
+            const { data, error } =
+                await supabaseAdmin
+                    .from("kael_chat_messages")
+                    .select("id, role, content, created_at")
+                    .eq("user_id", user.id)
+                    .order("created_at", { ascending: true })
+                    .limit(500);
+
+            if (error) {
+                console.error("KAEL HISTORY LOAD ERROR:", error);
+
+                return res.status(500).json({
+                    message: "Could not load your saved chats."
+                });
+            }
+
+            return res.json({
+                messages: data || []
+            });
+
+        } catch (error) {
+            console.error("KAEL HISTORY ERROR:", error);
+
+            return res.status(500).json({
+                message: "Could not load your saved chats."
+            });
+        }
+    }
+);
+
+
 /* =========================
    PUBLIC APPROVED UPLOADS
 ========================= */
