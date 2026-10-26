@@ -501,6 +501,28 @@ app.post(
                 });
             }
 
+            let authenticatedUserId = null;
+
+            const authHeader = req.headers.authorization;
+
+            if (authHeader?.startsWith("Bearer ")) {
+
+                const accessToken = authHeader.slice(7);
+
+                const {
+                    data: { user },
+                    error: authError
+                } = await supabaseAdmin.auth.getUser(accessToken);
+
+                if (authError || !user) {
+                    return res.status(401).json({
+                        message: "Your session is invalid. Please sign in again."
+                    });
+                }
+
+                authenticatedUserId = user.id;
+            }
+           
             if (!ai) {
 
                 return res.status(503).json({
