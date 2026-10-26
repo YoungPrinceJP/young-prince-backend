@@ -753,9 +753,37 @@ You are the AI companion of Young Prince.
                     ?.trim() ||
                 "I couldn't generate a response right now.";
 
-            return res.json({
-                reply
-            });
+          
+if (authenticatedUserId) {
+
+    const { error: saveError } =
+        await supabaseAdmin
+            .from("kael_chat_messages")
+            .insert([
+                {
+                    user_id: authenticatedUserId,
+                    role: "user",
+                    content: message
+                },
+                {
+                    user_id: authenticatedUserId,
+                    role: "assistant",
+                    content: reply
+                }
+            ]);
+
+    if (saveError) {
+        console.error(
+            "KAEL CHAT SAVE ERROR:",
+            saveError
+        );
+    }
+}
+
+return res.json({
+    reply
+});
+
 
         } catch (error) {
 
