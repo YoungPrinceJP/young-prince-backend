@@ -808,6 +808,7 @@ return res.json({
 
 app.get(
     "/api/kael/history",
+    kaelLimiter,
     async (req, res) => {
         try {
             const authHeader =
