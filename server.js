@@ -501,28 +501,26 @@ app.post(
                 });
             }
 
-         const authHeader = req.headers.authorization || "";
+        let authenticatedUserId = null;
 
-if (!authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({
-        message: "Please sign in to your Young Prince account before using Kael."
-    });
+const authHeader = req.headers.authorization || "";
+
+if (authHeader.startsWith("Bearer ")) {
+    const accessToken = authHeader.slice(7);
+
+    const {
+        data: { user },
+        error: authError
+    } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (authError || !user) {
+        return res.status(401).json({
+            message: "Your session is invalid. Please sign in again."
+        });
+    }
+
+    authenticatedUserId = user.id;
 }
-
-const accessToken = authHeader.slice(7);
-
-const {
-    data: { user },
-    error: authError
-} = await supabaseAdmin.auth.getUser(accessToken);
-
-if (authError || !user) {
-    return res.status(401).json({
-        message: "Your session is invalid. Please sign in again."
-    });
-}
-
-const authenticatedUserId = user.id;
            
             if (!ai) {
 
