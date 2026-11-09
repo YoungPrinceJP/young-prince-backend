@@ -1014,38 +1014,6 @@ app.get(
     "/api/uploads/:id/file",
     async (req, res) => {
 
-        try {
-
-            const authHeader =
-                req.headers.authorization || "";
-
-            if (!authHeader.startsWith("Bearer ")) {
-
-                return res.status(401).json({
-                    message: "Authentication required."
-                });
-
-            }
-
-            const accessToken =
-                authHeader.substring(7);
-
-            const {
-                data: { user },
-                error: authError
-            } =
-                await supabaseAdmin.auth.getUser(
-                    accessToken
-                );
-
-            if (authError || !user) {
-
-                return res.status(401).json({
-                    message: "Invalid or expired session."
-                });
-
-            }
-
             const metadata =
                 await getUploadMetadata(
                     req.params.id
