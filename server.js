@@ -1013,6 +1013,8 @@ app.get(
     "/api/uploads/:id/file",
     async (req, res) => {
 
+        try {
+
             const metadata =
                 await getUploadMetadata(
                     req.params.id
