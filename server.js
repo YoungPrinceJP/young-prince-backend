@@ -503,8 +503,6 @@ app.post(
 
         let authenticatedUserId = null;
 
-let authenticatedUserId = null;
-
 const authHeader = req.headers.authorization || "";
 
 if (authHeader.startsWith("Bearer ")) {
