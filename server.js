@@ -503,6 +503,8 @@ app.post(
 
         let authenticatedUserId = null;
 
+let authenticatedUserId = null;
+
 const authHeader = req.headers.authorization || "";
 
 if (authHeader.startsWith("Bearer ")) {
@@ -521,9 +523,8 @@ if (authHeader.startsWith("Bearer ")) {
 
     authenticatedUserId = user.id;
 }
-           
-            if (!ai) {
 
+if (!ai) {
                 return res.status(503).json({
                     message:
                         "Kael is not configured yet."
