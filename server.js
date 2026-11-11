@@ -1027,13 +1027,17 @@ app.get(
 
             }
 
-            if (metadata.status !== "approved") {
+          if (metadata.status !== "approved") {
+    return res.status(404).json({
+        message: "Upload not available."
+    });
+}
 
-                return res.status(404).json({
-                    message: "Upload not available."
-                });
-
-            }
+if (String(metadata.mimeType || "").toLowerCase() === "image/svg+xml") {
+    return res.status(415).json({
+        error: "SVG files are not supported."
+    });
+}
 
             const {
                 data: fileData,
@@ -1076,13 +1080,15 @@ app.get(
                 "application/octet-stream"
             );
 
-            res.setHeader(
-                "Content-Disposition",
-                `inline; filename="${safeFileName}"`
-            );
+         res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${safeFileName}"`
+);
 
-            res.send(buffer);
+res.setHeader("X-Content-Type-Options", "nosniff");
 
+res.send(buffer);
+           
         } catch (error) {
 
             console.error(
