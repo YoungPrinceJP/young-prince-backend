@@ -115,6 +115,78 @@ async function getUploadMetadata(id) {
 }
 
 /* =========================
+   OWNER MEDIA STORAGE HELPERS
+========================= */
+
+async function uploadToMediaStorage(
+    filePath,
+    storagePath,
+    contentType
+) {
+    const fileBuffer =
+        await fs.promises.readFile(filePath);
+
+    const { error } =
+        await supabaseAdmin.storage
+            .from(MEDIA_BUCKET)
+            .upload(
+                storagePath,
+                fileBuffer,
+                {
+                    contentType,
+                    upsert: false
+                }
+            );
+
+    if (error) {
+        throw error;
+    }
+}
+
+async function uploadJsonToMediaStorage(
+    storagePath,
+    data
+) {
+    const { error } =
+        await supabaseAdmin.storage
+            .from(MEDIA_BUCKET)
+            .upload(
+                storagePath,
+                JSON.stringify(data, null, 2),
+                {
+                    contentType: "application/json",
+                    upsert: false
+                }
+            );
+
+    if (error) {
+        throw error;
+    }
+}
+
+async function getMediaMetadata(id) {
+    const mediaId =
+        path.basename(String(id));
+
+    const { data, error } =
+        await supabaseAdmin.storage
+            .from(MEDIA_BUCKET)
+            .download(
+                `metadata/${mediaId}.json`
+            );
+
+    if (error || !data) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(await data.text());
+    } catch {
+        return null;
+    }
+}
+
+/* =========================
    APP
 ========================= */
 
@@ -1110,6 +1182,170 @@ res.send(buffer);
 );
 
 /* =========================
+   PUBLIC OWNER MEDIA FEED
+========================= */
+
+app.get(
+    "/api/media",
+    async (req, res) => {
+        try {
+            const requestedCategory =
+                typeof req.query.category === "string"
+                    ? req.query.category.trim()
+                    : "";
+
+            const { data, error } =
+                await supabaseAdmin.storage
+                    .from(MEDIA_BUCKET)
+                    .list("metadata", {
+                        limit: 100,
+                        sortBy: {
+                            column: "name",
+                            order: "desc"
+                        }
+                    });
+
+            if (error) {
+                throw error;
+            }
+
+            const items = [];
+
+            for (const file of data || []) {
+                if (!file.name.endsWith(".json")) {
+                    continue;
+                }
+
+                const { data: metadataFile, error: downloadError } =
+                    await supabaseAdmin.storage
+                        .from(MEDIA_BUCKET)
+                        .download(`metadata/${file.name}`);
+
+                if (downloadError || !metadataFile) {
+                    continue;
+                }
+
+                try {
+                    const metadata =
+                        JSON.parse(await metadataFile.text());
+
+                    if (
+                        metadata &&
+                        metadata.status === "published" &&
+                        (
+                            !requestedCategory ||
+                            metadata.category === requestedCategory
+                        )
+                    ) {
+                        items.push({
+                            id: metadata.id,
+                            title: metadata.title,
+                            description: metadata.description,
+                            category: metadata.category,
+                            mimeType: metadata.mimeType,
+                            publishedAt: metadata.publishedAt,
+                            fileUrl: `/api/media/${encodeURIComponent(metadata.id)}/file`
+                        });
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            items.sort(
+                (a, b) =>
+                    new Date(b.publishedAt) -
+                    new Date(a.publishedAt)
+            );
+
+            return res.json({ items });
+
+        } catch (error) {
+            console.error("PUBLIC MEDIA LIST ERROR:", error);
+
+            return res.status(500).json({
+                message: "Could not load published media."
+            });
+        }
+    }
+);
+
+/* =========================
+   PUBLIC OWNER MEDIA FILE
+========================= */
+
+app.get(
+    "/api/media/:id/file",
+    async (req, res) => {
+        try {
+            const metadata =
+                await getMediaMetadata(req.params.id);
+
+            if (
+                !metadata ||
+                metadata.status !== "published"
+            ) {
+                return res.status(404).json({
+                    message: "Published media not found."
+                });
+            }
+
+            if (
+                String(metadata.mimeType || "").toLowerCase() ===
+                "image/svg+xml"
+            ) {
+                return res.status(415).json({
+                    message: "SVG files are not supported."
+                });
+            }
+
+            const { data: fileData, error } =
+                await supabaseAdmin.storage
+                    .from(MEDIA_BUCKET)
+                    .download(metadata.storagePath);
+
+            if (error || !fileData) {
+                return res.status(404).json({
+                    message: "Media file not found."
+                });
+            }
+
+            const buffer =
+                Buffer.from(await fileData.arrayBuffer());
+
+            const safeFileName =
+                path.basename(
+                    metadata.originalName || "published-media"
+                );
+
+            res.setHeader(
+                "Content-Type",
+                metadata.mimeType || "application/octet-stream"
+            );
+
+            res.setHeader(
+                "Content-Disposition",
+                `inline; filename="${safeFileName}"`
+            );
+
+            res.setHeader(
+                "X-Content-Type-Options",
+                "nosniff"
+            );
+
+            return res.send(buffer);
+
+        } catch (error) {
+            console.error("PUBLIC MEDIA FILE ERROR:", error);
+
+            return res.status(500).json({
+                message: "Unable to access published media."
+            });
+        }
+    }
+);
+
+/* =========================
    ADMIN AUTH HELPER
 ========================= */
 
@@ -1188,6 +1424,138 @@ function verifyAdminToken(req) {
         return false;
     }
 }
+
+/* =========================
+   ADMIN OWNER MEDIA MANAGEMENT
+========================= */
+
+/* GET ALL OWNER PUBLICATIONS */
+
+app.get(
+    "/api/admin/media",
+    async (req, res) => {
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+
+        try {
+            const { data, error } =
+                await supabaseAdmin.storage
+                    .from(MEDIA_BUCKET)
+                    .list("metadata", {
+                        limit: 100,
+                        sortBy: {
+                            column: "name",
+                            order: "desc"
+                        }
+                    });
+
+            if (error) {
+                throw error;
+            }
+
+            const items = [];
+
+            for (const file of data || []) {
+                if (!file.name.endsWith(".json")) {
+                    continue;
+                }
+
+                const { data: metadataFile, error: downloadError } =
+                    await supabaseAdmin.storage
+                        .from(MEDIA_BUCKET)
+                        .download(`metadata/${file.name}`);
+
+                if (downloadError || !metadataFile) {
+                    continue;
+                }
+
+                try {
+                    const metadata =
+                        JSON.parse(await metadataFile.text());
+
+                    if (metadata) {
+                        items.push(metadata);
+                    }
+                } catch {
+                    continue;
+                }
+            }
+
+            items.sort(
+                (a, b) =>
+                    new Date(b.publishedAt || b.uploadedAt || 0) -
+                    new Date(a.publishedAt || a.uploadedAt || 0)
+            );
+
+            return res.json({ items });
+
+        } catch (error) {
+            console.error("ADMIN MEDIA LIST ERROR:", error);
+
+            return res.status(500).json({
+                message: "Could not load owner publications."
+            });
+        }
+    }
+);
+
+/* =========================
+   DELETE OWNER PUBLICATION
+========================= */
+
+app.delete(
+    "/api/admin/media/:id",
+    async (req, res) => {
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+
+        const id =
+            path.basename(String(req.params.id));
+
+        try {
+            const metadata =
+                await getMediaMetadata(id);
+
+            if (!metadata) {
+                return res.status(404).json({
+                    message: "Publication not found."
+                });
+            }
+
+            const pathsToRemove = [
+                metadata.storagePath,
+                `metadata/${id}.json`
+            ].filter(Boolean);
+
+            const { error } =
+                await supabaseAdmin.storage
+                    .from(MEDIA_BUCKET)
+                    .remove(pathsToRemove);
+
+            if (error) {
+                throw error;
+            }
+
+            return res.json({
+                success: true,
+                message: "Publication deleted."
+            });
+
+        } catch (error) {
+            console.error("OWNER MEDIA DELETE ERROR:", error);
+
+            return res.status(500).json({
+                message: "Could not delete publication."
+            });
+        }
+    }
+);
 
 /* =========================
    ADMIN UPLOAD MANAGEMENT
