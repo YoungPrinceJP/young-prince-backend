@@ -22,6 +22,10 @@ const supabaseAdmin = createClient(
 const COMMUNITY_BUCKET =
     "community-uploads";
 
+const MEDIA_BUCKET =
+    "young-prince-media";
+
+
 /* =========================
    SUPABASE STORAGE HELPERS
 ========================= */
