@@ -1502,6 +1502,138 @@ app.get(
     }
 );
 
+/* PUBLISH OWNER CONTENT */
+
+app.post(
+    "/api/admin/media",
+    (req, res, next) => {
+        if (!verifyAdminToken(req)) {
+            return res.status(401).json({
+                message: "Unauthorized."
+            });
+        }
+        next();
+    },
+    upload.single("file"),
+    async (req, res) => {
+        let uploadedStoragePath = null;
+        let metadataStoragePath = null;
+
+        try {
+            if (!req.file) {
+                return res.status(400).json({
+                    message: "Please select a file."
+                });
+            }
+
+            const allowedCategories = [
+                "Original Stories",
+                "Manga & Art",
+                "Videos",
+                "Music & Media",
+                "News Feed"
+            ];
+
+            const category = String(
+                req.body.category || ""
+            ).trim();
+
+            if (!allowedCategories.includes(category)) {
+                return res.status(400).json({
+                    message: "Invalid publishing category."
+                });
+            }
+
+            const title = String(
+                req.body.title || ""
+            ).trim().slice(0, 200);
+
+            if (!title) {
+                return res.status(400).json({
+                    message: "A publication title is required."
+                });
+            }
+
+            const description = String(
+                req.body.description || ""
+            ).trim().slice(0, 5000);
+
+            const id = path.basename(
+                req.file.filename,
+                path.extname(req.file.filename)
+            );
+
+            uploadedStoragePath =
+                `files/${req.file.filename}`;
+
+            metadataStoragePath =
+                `metadata/${id}.json`;
+
+            const now = new Date().toISOString();
+
+            const metadata = {
+                id,
+                title,
+                description,
+                category,
+                originalName: req.file.originalname,
+                storedName: req.file.filename,
+                storagePath: uploadedStoragePath,
+                mimeType: req.file.mimetype,
+                size: req.file.size,
+                uploadedAt: now,
+                publishedAt: now,
+                status: "published"
+            };
+
+            await uploadToMediaStorage(
+                req.file.path,
+                uploadedStoragePath,
+                req.file.mimetype
+            );
+
+            await uploadJsonToMediaStorage(
+                metadataStoragePath,
+                metadata
+            );
+
+            return res.status(201).json({
+                success: true,
+                message: "Publication uploaded successfully.",
+                item: metadata
+            });
+
+        } catch (error) {
+            console.error(
+                "OWNER MEDIA PUBLISH ERROR:",
+                error
+            );
+
+            const pathsToRemove = [
+                uploadedStoragePath,
+                metadataStoragePath
+            ].filter(Boolean);
+
+            if (pathsToRemove.length) {
+                await supabaseAdmin.storage
+                    .from(MEDIA_BUCKET)
+                    .remove(pathsToRemove);
+            }
+
+            return res.status(500).json({
+                message: "Could not publish your content."
+            });
+
+        } finally {
+            if (req.file?.path) {
+                try {
+                    await fs.promises.unlink(req.file.path);
+                } catch {}
+            }
+        }
+    }
+);
+
 /* =========================
    DELETE OWNER PUBLICATION
 ========================= */
