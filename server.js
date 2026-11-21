@@ -1502,6 +1502,7 @@ app.get(
     }
 );
 
+
 /* PUBLISH OWNER CONTENT */
 
 app.post(
@@ -1520,12 +1521,6 @@ app.post(
         let metadataStoragePath = null;
 
         try {
-            if (!req.file) {
-                return res.status(400).json({
-                    message: "Please select a file."
-                });
-            }
-
             const allowedCategories = [
                 "Original Stories",
                 "Manga & Art",
@@ -1544,27 +1539,37 @@ app.post(
                 });
             }
 
-            const title = String(
-                req.body.title || ""
-            ).trim().slice(0, 200);
-
-            if (!title) {
-                return res.status(400).json({
-                    message: "A publication title is required."
-                });
-            }
-
             const description = String(
                 req.body.description || ""
             ).trim().slice(0, 5000);
 
-            const id = path.basename(
-                req.file.filename,
-                path.extname(req.file.filename)
-            );
+            if (!description && !req.file) {
+                return res.status(400).json({
+                    message: "Please write something or attach a file."
+                });
+            }
 
-            uploadedStoragePath =
-                `files/${req.file.filename}`;
+            const suppliedTitle = String(
+                req.body.title || ""
+            ).trim().slice(0, 200);
+
+            const title =
+                suppliedTitle ||
+                description.slice(0, 80) ||
+                req.file?.originalname ||
+                "Untitled post";
+
+            const id = req.file
+                ? path.basename(
+                    req.file.filename,
+                    path.extname(req.file.filename)
+                )
+                : `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+            if (req.file) {
+                uploadedStoragePath =
+                    `files/${req.file.filename}`;
+            }
 
             metadataStoragePath =
                 `metadata/${id}.json`;
@@ -1576,21 +1581,23 @@ app.post(
                 title,
                 description,
                 category,
-                originalName: req.file.originalname,
-                storedName: req.file.filename,
+                originalName: req.file?.originalname || null,
+                storedName: req.file?.filename || null,
                 storagePath: uploadedStoragePath,
-                mimeType: req.file.mimetype,
-                size: req.file.size,
+                mimeType: req.file?.mimetype || null,
+                size: req.file?.size || 0,
                 uploadedAt: now,
                 publishedAt: now,
                 status: "published"
             };
 
-            await uploadToMediaStorage(
-                req.file.path,
-                uploadedStoragePath,
-                req.file.mimetype
-            );
+            if (req.file) {
+                await uploadToMediaStorage(
+                    req.file.path,
+                    uploadedStoragePath,
+                    req.file.mimetype
+                );
+            }
 
             await uploadJsonToMediaStorage(
                 metadataStoragePath,
@@ -1599,7 +1606,7 @@ app.post(
 
             return res.status(201).json({
                 success: true,
-                message: "Publication uploaded successfully.",
+                message: "Post published successfully.",
                 item: metadata
             });
 
@@ -1633,6 +1640,7 @@ app.post(
         }
     }
 );
+
 
 /* =========================
    DELETE OWNER PUBLICATION
