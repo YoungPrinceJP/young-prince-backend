@@ -2080,6 +2080,7 @@ app.delete(
     }
 );
 
+
 /* =========================
    UPLOAD
 ========================= */
@@ -2093,74 +2094,66 @@ app.post(
 
         try {
 
-            if (!req.file) {
+            const description = String(
+                req.body?.description || ""
+            ).trim().slice(0, 2000);
 
+            if (!description && !req.file) {
                 return res.status(400).json({
                     message:
-                        "Please choose a file to upload."
+                        "Please write something or attach a file."
                 });
             }
 
+            const id = req.file
+                ? path.basename(
+                    req.file.filename,
+                    path.extname(req.file.filename)
+                )
+                : Date.now().toString(36) +
+                  Math.random().toString(36).slice(2, 10);
+
             const metadata = {
 
-                id:
-                    path.basename(
-                        req.file.filename,
-                        path.extname(
-                            req.file.filename
-                        )
-                    ),
+                id,
 
                 name:
                     String(
-                        req.body?.name ||
-                        ""
-                    ).slice(
-                        0,
-                        120
-                    ),
+                        req.body?.name || ""
+                    ).slice(0, 120),
 
                 title:
                     String(
                         req.body?.title ||
-                        ""
-                    ).slice(
-                        0,
-                        200
-                    ),
+                        description.slice(0, 80) ||
+                        (req.file
+                            ? path.parse(req.file.originalname).name
+                            : "Community post")
+                    ).slice(0, 200),
 
                 category:
                     String(
-                        req.body?.category ||
-                        ""
-                    ).slice(
-                        0,
-                        50
-                    ),
+                        req.body?.category || ""
+                    ).slice(0, 50),
 
-                description:
-                    String(
-                        req.body?.description ||
-                        ""
-                    ).slice(
-                        0,
-                        2000
-                    ),
+                description,
 
                 originalName:
-                    req.file.originalname,
+                    req.file?.originalname || null,
 
                 storedName:
-                    req.file.filename,
+                    req.file?.filename || null,
 
                 storagePath:
-                    `files/${req.file.filename}`,
+                    req.file
+                        ? `files/${req.file.filename}`
+                        : null,
 
                 mimeType:
-                    req.file.mimetype,
+                    req.file?.mimetype || null,
 
                 size:
-                    req.file.size,
+                    req.file?.size || 0,
 
                 uploadedAt:
                     new Date().toISOString(),
@@ -2169,13 +2162,16 @@ app.post(
                     "pending"
             };
 
-            /* Upload actual file */
+            /* Upload actual file only when attached */
 
-            await uploadToCommunityStorage(
-                req.file.path,
-                metadata.storagePath,
-                metadata.mimeType
-            );
+            if (req.file) {
+
+                await uploadToCommunityStorage(
+                    req.file.path,
+                    metadata.storagePath,
+                    metadata.mimeType
+                );
+            }
 
             /* Upload metadata */
 
@@ -2186,18 +2182,19 @@ app.post(
 
             /* Delete temporary Render file */
 
-            try {
+            if (req.file?.path) {
 
-                await fs.promises.unlink(
-                    req.file.path
-                );
-
-            } catch {}
+                try {
+                    await fs.promises.unlink(
+                        req.file.path
+                    );
+                } catch {}
+            }
 
             return res.status(201).json({
 
                 message:
-                    "Your creation has been received successfully and is awaiting review.",
+                    "Your post has been received successfully and is awaiting review.",
 
                 uploadId:
                     metadata.id
@@ -2210,16 +2207,12 @@ app.post(
                 error
             );
 
-            if (
-                req.file?.path
-            ) {
+            if (req.file?.path) {
 
                 try {
-
                     await fs.promises.unlink(
                         req.file.path
                     );
-
                 } catch {}
             }
 
